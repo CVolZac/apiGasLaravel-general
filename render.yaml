@@ -1,30 +1,27 @@
 services:
   - type: web
-    name: laravel-app
-    env: php
+    name: apigas-laravel
+    env: docker
     plan: free
-    buildCommand: |
-      composer install --no-dev --optimize-autoloader
-      php artisan config:cache
-    startCommand: php artisan serve --host 0.0.0.0 --port 10000
+    dockerfilePath: ./dockerfile
+    autoDeploy: true
+    healthCheckPath: /
     envVars:
       - key: APP_ENV
         value: production
-      - key: APP_KEY
-        generateValue: true
       - key: APP_DEBUG
         value: false
       - key: APP_URL
-        value: https://laravel-app.onrender.com
+        value: https://apigas-laravel.onrender.com
+      - key: APP_KEY     # GENÉRALO UNA SOLA VEZ: `php artisan key:generate --show`
+        value: base64:XXXXXXXXXXXX               # pega aquí el valor
       - key: DB_CONNECTION
         value: pgsql
-      - key: DB_HOST
-        value: dpg-d0ci0vbe5dus73adj9h0-a.oregon-postgres.render.com
-      - key: DB_PORT
-        value: 5432
-      - key: DB_DATABASE
-        value: apigaslaravel
-      - key: DB_USERNAME
-        value: apigaslaravel_user
-      - key: DB_PASSWORD
-        value: 10TEj6G4OHz8ey3p66i85U3gCCYwll34
+      - key: DATABASE_URL     # Laravel parsea esta URL automáticamente
+        fromDatabase:
+          name: apigas-db
+          property: connectionString
+
+databases:
+  - name: apigas-db
+    plan: free

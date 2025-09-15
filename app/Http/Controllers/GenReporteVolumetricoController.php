@@ -212,6 +212,9 @@ class GenReporteVolumetricoController extends Controller
         //     ->unique()
         //     ->values();
 
+        if ($fechasUnicas->isEmpty()) {
+            return [];
+        }
         $reportes = [];
         foreach ($fechasUnicas as $fecha) {
             $reporte    = $this->generarReporteDiarioPorFecha($idPlanta, $fecha);
@@ -227,6 +230,11 @@ class GenReporteVolumetricoController extends Controller
      */
     private function generarReporteDiarioPorFecha($idPlanta, $fecha)
     {
+        if (empty($fecha)) {
+            // Evita el "Undefined variable $fecha" si alguien llama mal este método
+            abort(400, 'La fecha es obligatoria para el reporte diario');
+        }
+        
         $dataGeneral = InformacionGeneralReporte::where('id_planta', $idPlanta)->firstOrFail();
 
         $almacenes    = Almacen::where('id_planta', $idPlanta)->get();

@@ -11,6 +11,11 @@ class InformacionGeneralReporte extends Model
 
     protected $table = 'informacion_general_reporte';
 
+    protected $casts = [
+    'rfc_proveedores' => 'array'
+    ];
+
+
     protected $fillable = [
         'id_planta',
         'rfc_contribuyente',

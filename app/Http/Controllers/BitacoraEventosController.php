@@ -35,6 +35,9 @@ class BitacoraEventosController extends Controller
             $data["TipoEvento"] = $request["TipoEvento"];
             $data["DescripcionEvento"] = $request["DescripcionEvento"];
             $data["IdentificacionComponenteAlarma"] = $request["IdentificacionComponenteAlarma"];
+            $data["TipoEquipo"] = $request["TipoEquipo"];
+            $data["EquipoRelacionado"] = $request["EquipoRelacionado"];
+
 
             $res = BitacoraEventos::create($data);
             return response()->json($res, 200);
@@ -68,6 +71,9 @@ class BitacoraEventosController extends Controller
             $data["TipoEvento"] = $request["TipoEvento"];
             $data["DescripcionEvento"] = $request["DescripcionEvento"];
             $data["IdentificacionComponenteAlarma"] = $request["IdentificacionComponenteAlarma"];
+            $data["TipoEquipo"] = $request["TipoEquipo"];
+            $data["EquipoRelacionado"] = $request["EquipoRelacionado"];
+
 
             BitacoraEventos::find($request->id)->update($data);
             $res = BitacoraEventos::find($request->id);

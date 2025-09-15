@@ -8,6 +8,7 @@ use App\Models\EventoAlmacen;
 use App\Models\BitacoraEventos;
 use App\Models\Almacen;
 use Carbon\Carbon;
+use App\Models\Cfdis;
 
 class GenReporteVolumetricoController extends Controller
 {
@@ -53,27 +54,63 @@ class GenReporteVolumetricoController extends Controller
         $importeRecepciones = 96000.00;
         $importeEntregas = 135000.00;
 
-        $complementosRecepcion = $totalRecepciones->map(function ($evento) {
+        $complementosRecepcion = Cfdis::whereIn('evento_id', $totalRecepciones->pluck('id'))->get()->map(function ($cfdi) {
             return [
-                "UUID" => "FAKE-UUID-REC-" . $evento->id,
-                "Fecha" => Carbon::parse($evento->fecha_inicio_evento)->format('Y-m-d\TH:i:s'),
-                "Proveedor" => "Proveedor Ficticio",
-                "VolumenRelacionado" => (float) $evento->volumen_movido,
+                "UUID" => $cfdi->UUID,
+                "Fecha" => Carbon::parse($cfdi->FechaCFDI)->format('Y-m-d\TH:i:s'),
+                "Proveedor" => $cfdi->NombreEmisorCFDI,
+                "VolumenRelacionado" => (float) $cfdi->MontoTotalOperacion,
                 "Unidad" => "L"
             ];
-        })->values();
+        });
 
-        $complementosEntrega = $totalEntregas->map(function ($evento) {
-            return [
-                "UUID" => "FAKE-UUID-ENT-" . $evento->id,
-                "Fecha" => Carbon::parse($evento->fecha_inicio_evento)->format('Y-m-d\TH:i:s'),
-                "Cliente" => "Cliente Ficticio",
-                "VolumenRelacionado" => (float) $evento->volumen_movido,
-                "Unidad" => "L"
+
+        $complementosEntrega = Cfdis::whereIn('evento_id', $totalEntregas->pluck('id'))->get()->map(function ($cfdi) {
+        return [
+            "UUID" => $cfdi->UUID,
+            "Fecha" => Carbon::parse($cfdi->FechaCFDI)->format('Y-m-d\TH:i:s'),
+            "Cliente" => $cfdi->NombreEmisorCFDI,
+            "VolumenRelacionado" => (float) $cfdi->MontoTotalOperacion,
+            "Unidad" => "L"
             ];
-        })->values();
+        });
+
+        $tanques = $almacenes->map(function ($tanque) {
+        return [
+                "ClaveIdentificacionTanque" => $tanque->clave_almacen,
+                "LocalizacionDescripcionTanque" => $tanque->localizacion_descripcion_almacen,
+                "VigenciaCalibracionTanque" => $tanque->vigencia_calibracion_tanque,
+                "CapacidadTotalTanque" => ["ValorNumerico" => (float) $tanque->capacidad_almacen, "UnidadDeMedida" => "UM03"],
+                "CapacidadOperativaTanque" => ["ValorNumerico" => (float) $tanque->capacidad_operativa, "UnidadDeMedida" => "UM03"],
+                "CapacidadUtilTanque" => ["ValorNumerico" => (float) $tanque->capacidad_util, "UnidadDeMedida" => "UM03"],
+                "CapacidadFondajeTanque" => ["ValorNumerico" => (float) $tanque->capacidad_fondaje, "UnidadDeMedida" => "UM03"],
+                "CapacidadGasTalon" => ["ValorNumerico" => 0, "UnidadDeMedida" => "UM03"],
+                "VolumenMinimoOperacion" => ["ValorNumerico" => (float) $tanque->volumen_minimo_operacion, "UnidadDeMedida" => "UM03"],
+                "EstadoTanque" => $tanque->estado_tanque,
+                "Medidores" => []
+            ];
+        })->toArray();
+
+        $bitacora = BitacoraEventos::where('id_planta', $idPlanta)
+        ->whereYear('FechaYHoraEvento', $year)
+        ->whereMonth('FechaYHoraEvento', $month)
+        ->orderBy('FechaYHoraEvento')
+        ->get()
+        ->map(function ($registro, $index) {
+            return [
+                "NumeroRegistro" => $index + 1,
+                "FechaYHoraEvento" => Carbon::parse($registro->FechaYHoraEvento)->format('Y-m-d\TH:i:sP'),
+                "UsuarioResponsable" => $registro->UsuarioResponsable,
+                "TipoEvento" => $registro->TipoEvento,
+                "DescripcionEvento" => $registro->DescripcionEvento,
+                "IdentificacionComponenteAlarma" => $registro->IdentificacionComponenteAlarma
+            ];
+        })->toArray();
+
+
 
         return response()->json([
+            "TipoReporte" => "M",
             "Version" => "1.0",
             "RfcContribuyente" => $dataGeneral->rfc_contribuyente,
             "RfcProveedor" => $dataGeneral->rfc_proveedor,
@@ -92,9 +129,9 @@ class GenReporteVolumetricoController extends Controller
             "FechaYHoraReporteMes" => Carbon::create($year, $month, 1)->endOfMonth()->format('Y-m-d\T23:59:59P'),
             "PRODUCTO" => [[
                 "ClaveProducto" => "PR12",
-                "ComposDePropanoEnGasLP" => 60.0,
-                "ComposDeButanoEnGasLP" => 40.0,
-                "TANQUE" => [],
+                "ComposDePropanoEnGasLP" => 91.5720,
+                "ComposDeButanoEnGasLP" => 8.4279,
+                "TANQUE" => $tanques,
                 "REPORTEDEVOLUMENMENSUAL" => [
                     "CONTROLDEEXISTENCIAS" => [
                         "VolumenExistenciasMes" => ["ValorNumerico" => 2500.00, "UM" => "UM03"],
@@ -118,7 +155,7 @@ class GenReporteVolumetricoController extends Controller
                     ]
                 ]
             ]],
-            "BITACORA" => []
+            "BITACORA" => $bitacora
         ]);
     }
 
@@ -158,9 +195,11 @@ class GenReporteVolumetricoController extends Controller
             ->orderBy('fecha_inicio_evento')
             ->get();
 
+        $cfdis = Cfdis::whereIn('evento_id', $eventos->pluck('id'))->get()->groupBy('evento_id');
+
         $caracter = $this->obtenerCaracter($dataGeneral);
 
-        $tanquesBase = $almacenes->map(function ($tanque) use ($eventos) {
+        $tanquesBase = $almacenes->map(function ($tanque) use ($eventos, $cfdis) {
             $eventosTanque = $eventos->where('id_almacen', $tanque->id);
 
             $primerEvento = $eventosTanque->sortBy('fecha_inicio_evento')->first();
@@ -186,25 +225,49 @@ class GenReporteVolumetricoController extends Controller
                 "FechaYHoraMedicionAnterior" => now()->subDay()->format('Y-m-d\T23:59:59P')
             ];
 
-            $recepciones = $recepcionesEventos->map(function ($evento) {
+            $recepciones = $recepcionesEventos->map(function ($evento) use ($cfdis) {
                 return [
                     "VolumenDespuesRecepcion" => ["ValorNumerico" => (float) $evento->volumen_final, "UnidadDeMedida" => "UM03"],
                     "VolumenRecepcion" => ["ValorNumerico" => (float) $evento->volumen_movido, "UnidadDeMedida" => "UM03"],
                     "Temperatura" => (float) $evento->temperatura,
                     "PresionAbsoluta" => (float) $evento->presion_absoluta,
                     "FechaYHoraInicioRecepcion" => Carbon::parse($evento->fecha_inicio_evento)->format('Y-m-d\TH:i:sP'),
-                    "FechaYHoraFinRecepcion" => Carbon::parse($evento->fecha_fin_evento)->format('Y-m-d\TH:i:sP')
+                    "FechaYHoraFinRecepcion" => Carbon::parse($evento->fecha_fin_evento)->format('Y-m-d\TH:i:sP'),
+                    "Complemento" => collect($cfdis->get($evento->id))->map(function ($cfdi) {
+                        return [
+                            "TipoComplemento" => "CFDI",
+                            "Version" => $cfdi->Version,
+                            "UUID" => $cfdi->UUID,
+                            "RFCEmisorCFDI" => $cfdi->RFCEmisorCFDI,
+                            "NombreEmisorCFDI" => $cfdi->NombreEmisorCFDI,
+                            "RFCProveedorReceptor" => $cfdi->RFCProveedorReceptor,
+                            "MontoTotalOperacion" => (float) $cfdi->MontoTotalOperacion,
+                            "FechaCFDI" => \Carbon\Carbon::parse($cfdi->FechaCFDI)->format('Y-m-d')
+                        ];
+                    })->values()
                 ];
             })->values();
 
-            $entregas = $entregasEventos->map(function ($evento) {
+            $entregas = $entregasEventos->map(function ($evento) use ($cfdis) {
                 return [
                     "VolumenDespuesEntrega" => ["ValorNumerico" => (float) $evento->volumen_final, "UnidadDeMedida" => "UM03"],
                     "VolumenEntregado" => ["ValorNumerico" => (float) $evento->volumen_movido, "UnidadDeMedida" => "UM03"],
                     "Temperatura" => (float) $evento->temperatura,
                     "PresionAbsoluta" => (float) $evento->presion_absoluta,
                     "FechaYHoraInicioEntrega" => Carbon::parse($evento->fecha_inicio_evento)->format('Y-m-d\TH:i:sP'),
-                    "FechaYHoraFinEntrega" => Carbon::parse($evento->fecha_fin_evento)->format('Y-m-d\TH:i:sP')
+                    "FechaYHoraFinEntrega" => Carbon::parse($evento->fecha_fin_evento)->format('Y-m-d\TH:i:sP'),
+                    "Complemento" => collect($cfdis->get($evento->id))->map(function ($cfdi) {
+                        return [
+                            "TipoComplemento" => "CFDI",
+                            "Version" => $cfdi->Version,
+                            "UUID" => $cfdi->UUID,
+                            "RFCEmisorCFDI" => $cfdi->RFCEmisorCFDI,
+                            "NombreEmisorCFDI" => $cfdi->NombreEmisorCFDI,
+                            "RFCProveedorReceptor" => $cfdi->RFCProveedorReceptor,
+                            "MontoTotalOperacion" => (float) $cfdi->MontoTotalOperacion,
+                            "FechaCFDI" => \Carbon\Carbon::parse($cfdi->FechaCFDI)->format('Y-m-d')
+                        ];
+                    })->values()
                 ];
             })->values();
 
@@ -242,6 +305,7 @@ class GenReporteVolumetricoController extends Controller
             })->toArray();
 
         return [
+            "TipoReporte" => "D",
             "Version" => "1.0",
             "RfcContribuyente" => $dataGeneral->rfc_contribuyente,
             "RfcProveedor" => $dataGeneral->rfc_proveedor,
@@ -260,12 +324,12 @@ class GenReporteVolumetricoController extends Controller
             "FechaYHoraCorte" => Carbon::parse($fecha . ' 23:59:59')->format('Y-m-d\TH:i:sP'),
             "Producto" => [[
                 "ClaveProducto" => "PR12",
-                "ComposDePropanoEnGasLP" => 60.0,
-                "ComposDeButanoEnGasLP" => 40.0,
+                "ComposDePropanoEnGasLP" => 91.5720,
+                "ComposDeButanoEnGasLP" => 8.4279,
                 "TANQUE" => $tanquesBase
             ]],
             "BITACORA" => $bitacora
-        ];
+        ]; 
     }
 
     private function obtenerCaracter($dataGeneral)

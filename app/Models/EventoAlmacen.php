@@ -29,4 +29,10 @@ class EventoAlmacen extends Model
     {
         return $this->belongsTo(Almacen::class, 'id_almacen', 'id');
     }
+
+    public function cfdis()
+    {
+        return $this->hasMany(Cfdi::class, 'evento_id');
+    }
+
 }

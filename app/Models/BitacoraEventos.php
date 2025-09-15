@@ -18,6 +18,14 @@ class BitacoraEventos extends Model
         'UsuarioResponsable',
         'TipoEvento',
         'DescripcionEvento',
-        'IdentificacionComponenteAlarma'
+        'IdentificacionComponenteAlarma',
+        'TipoEquipo',
+        'EquipoRelacionado'
     ];
+
+    protected $casts = [
+        'FechaYHoraEvento' => 'datetime',
+    ];
+
+
 }

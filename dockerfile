@@ -1,31 +1,40 @@
-FROM php:8.2-fpm
+FROM php:8.2-cli
 
-# Instala dependencias del sistema necesarias
+# Paquetes del sistema y extensiones PHP
 RUN apt-get update && apt-get install -y \
-    git unzip curl libzip-dev libpq-dev \
-    && docker-php-ext-install pdo pdo_pgsql zip
+    git unzip libzip-dev libpq-dev \
+ && docker-php-ext-install zip pdo pdo_pgsql \
+ && rm -rf /var/lib/apt/lists/*
 
-# Instala Composer
+# Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Establece el directorio de trabajo
+# Directorio de trabajo
 WORKDIR /var/www
 
-# Copia los archivos del proyecto
+# Copia de archivos
 COPY . .
 
-# Otorga permisos adecuados
+# Permisos
 RUN chown -R www-data:www-data storage bootstrap/cache \
-    && chmod -R 775 storage bootstrap/cache
+ && chmod -R 775 storage bootstrap/cache
 
-# Instala dependencias de Composer
-RUN composer install --no-dev --optimize-autoloader
+# Dependencias PHP
+RUN composer install --no-interaction --prefer-dist --optimize-autoloader
 
-# Genera la caché de configuración
-RUN php artisan config:clear && php artisan config:cache
+# Railway inyecta PORT; por compatibilidad local usa 8080 por defecto
+ENV PORT=8080
 
-# Expone el puerto 8000
-EXPOSE 8000
+# Exponer (opcional, Railway detecta PORT igualmente)
+EXPOSE 8080
 
-# Comando de inicio
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+# Arranque: preparar app y servir
+# - no usamos "config:cache" en build; aquí sí porque ya hay env vars
+CMD bash -lc '\
+  php artisan key:generate --force || true && \
+  php artisan migrate --force || true && \
+  php artisan storage:link || true && \
+  php artisan config:clear && php artisan config:cache && \
+  php artisan route:cache && php artisan view:cache && \
+  php artisan serve --host=0.0.0.0 --port=${PORT:-8080} \
+'

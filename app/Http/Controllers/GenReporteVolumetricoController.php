@@ -260,7 +260,7 @@ class GenReporteVolumetricoController extends Controller
 
         $caracter = $this->obtenerCaracter($dataGeneral);
 
-        $tanquesBase = $almacenes->map(function ($tanque) use ($eventos, $cfdis) {
+        $tanquesBase = $almacenes->map(function ($tanque) use ($eventos, $cfdis, $fecha) {
 
             $eventosTanque  = $eventos->where('id_almacen', $tanque->id);
             $primerEvento   = $eventosTanque->sortBy('fecha_inicio_evento')->first();

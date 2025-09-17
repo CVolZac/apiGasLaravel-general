@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginRegisterController;
 use App\Http\Controllers\PipaController;
 use App\Http\Controllers\RegistroLlenadoAlmacenController;
-use App\Http\Controllers\ReporteVolumetrico;
+//use App\Http\Controllers\ReporteVolumetrico;
 use App\Http\Controllers\RegistroEntradasSalidasPipaController;
 use App\Http\Controllers\InformacionGeneralReporteController;
 use App\Http\Controllers\GenReporteVolumetricoController;
@@ -18,6 +18,11 @@ use App\Http\Controllers\EventoAlmacenController;
 use App\Http\Controllers\ExistenciaAlmacenController;
 use App\Http\Controllers\CfdiController;
 
+use App\Http\Controllers\ComplementoNacionalController;
+use App\Http\Controllers\ComplementoExtranjeroController;
+use App\Http\Controllers\ComplementoTransporteController;
+
+
 // Rutas publicas para acceder o registrar una cuenta
 Route::controller(LoginRegisterController::class)->group(function() {
     Route::post('/local/auth/register', 'register');
@@ -27,6 +32,24 @@ Route::controller(LoginRegisterController::class)->group(function() {
 // Protected routes of product and logout
 Route::middleware('auth:sanctum')->group( function () {
     Route::post('/local/auth/logout', [LoginRegisterController::class, 'logout']);
+
+     // Complemento NACIONAL (1:1 por evento)
+    Route::get   ('/v1/eventoAlmacen/{eventoId}/nacional',        [ComplementoNacionalController::class, 'show']);
+    Route::post  ('/v1/eventoAlmacen/{eventoId}/nacional',        [ComplementoNacionalController::class, 'store']);
+    Route::post  ('/v1/eventoAlmacen/{eventoId}/nacional/update', [ComplementoNacionalController::class, 'update']);
+    Route::delete('/v1/eventoAlmacen/{eventoId}/nacional',        [ComplementoNacionalController::class, 'destroy']);
+
+    // Complemento EXTRANJERO (1:1 por evento)
+    Route::get   ('/v1/eventoAlmacen/{eventoId}/extranjero',        [ComplementoExtranjeroController::class, 'show']);
+    Route::post  ('/v1/eventoAlmacen/{eventoId}/extranjero',        [ComplementoExtranjeroController::class, 'store']);
+    Route::post  ('/v1/eventoAlmacen/{eventoId}/extranjero/update', [ComplementoExtranjeroController::class, 'update']);
+    Route::delete('/v1/eventoAlmacen/{eventoId}/extranjero',        [ComplementoExtranjeroController::class, 'destroy']);
+
+    // Complemento TRANSPORTE (1:1 por evento)
+    Route::get   ('/v1/eventoAlmacen/{eventoId}/transporte',        [ComplementoTransporteController::class, 'show']);
+    Route::post  ('/v1/eventoAlmacen/{eventoId}/transporte',        [ComplementoTransporteController::class, 'store']);
+    Route::post  ('/v1/eventoAlmacen/{eventoId}/transporte/update', [ComplementoTransporteController::class, 'update']);
+    Route::delete('/v1/eventoAlmacen/{eventoId}/transporte',        [ComplementoTransporteController::class, 'destroy']);
 
     // INFORMACIÓN DE ROLES Y PLANTA
     
@@ -68,6 +91,7 @@ Route::middleware('auth:sanctum')->group( function () {
     });
 
     //Registro para el reporte volumetrico
+    /*
     Route::controller(ReporteVolumetrico::class)->group(function(){
         Route::get('/v1/reporte/volumetrico/{idPlanta}', 'index');
         Route::get('/v1/reporte/volumetrico/{id}', 'show');
@@ -75,6 +99,7 @@ Route::middleware('auth:sanctum')->group( function () {
         Route::post('/v1/reporte/volumetrico/{id}', 'update');
         Route::delete('/v1/reporte/volumetrico/{id}', 'destroy');
     });
+    */
 
     //Registro para entradas y salidas
     Route::controller(RegistroEntradasSalidasPipaController::class)->group(function(){

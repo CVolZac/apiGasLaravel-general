@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Cfdi extends Model
+class Cfdis extends Model
 {
     protected $table = 'cfdis';
 

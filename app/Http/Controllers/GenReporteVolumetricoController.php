@@ -8,11 +8,17 @@ use App\Models\InformacionGeneralReporte;
 use App\Models\EventoAlmacen;
 use App\Models\BitacoraEventos;
 use App\Models\Almacen;
-use App\Models\Cfdi;
+use App\Models\Cfdi; // Si tu modelo es Cfdis, cambia este use y las referencias abajo.
 use Carbon\Carbon;
 
 class GenReporteVolumetricoController extends Controller
 {
+    /**
+     * Punto de entrada:
+     *  - $tipoDM = 0 -> Mensual (almacenamiento)
+     *  - $tipoDM = 1 -> Diario por fecha (almacenamiento)
+     *  - $tipoDM = 2 -> Serie de diarios por mes (almacenamiento)
+     */
     public function generarReporte($idPlanta, $yearAndMonth, $tipoDM)
     {
         date_default_timezone_set('America/Mexico_City');
@@ -24,451 +30,591 @@ class GenReporteVolumetricoController extends Controller
         if ($tipoDM == 0) {
             return $this->generarReporteMensualAlmacen($idPlanta, $year, $month);
         } elseif ($tipoDM == 1) {
+            // Espera ?fecha=YYYY-MM-DD en query
+            $fecha = request()->query('fecha');
+            if (!$fecha) {
+                return response()->json(['error' => 'Falta parámetro fecha=YYYY-MM-DD'], 422);
+            }
+            return $this->generarReporteDiarioPorFecha($idPlanta, $fecha);
+        } elseif ($tipoDM == 2) {
             return $this->generarReportesDiariosPorMes($idPlanta, $year, $month);
-        } else {
-            return [
-                "MENSUALES" => $this->generarReporteMensualAlmacen($idPlanta, $year, $month),
-                "DIARIOS"   => $this->generarReportesDiariosPorMes($idPlanta, $year, $month)
-            ];
         }
+
+        return response()->json(['error' => 'tipoDM inválido'], 400);
     }
 
-    /** ---------------------------
-     *  REPORTE MENSUAL (ALMACÉN)
-     *  ---------------------------
+    /**
+     * Reporte MENSUAL (estrictamente almacenamiento)
      */
-    private function generarReporteMensualAlmacen($idPlanta, $year, $month)
+    private function generarReporteMensualAlmacen(int $idPlanta, int $year, int $month)
     {
-        $dataGeneral = InformacionGeneralReporte::where('id_planta', $idPlanta)->firstOrFail();
+        // Rango de mes
+        $inicioMes = Carbon::create($year, $month, 1, 0, 0, 0);
+        $finMes    = (clone $inicioMes)->endOfMonth()->setTime(23, 59, 59);
 
-        $almacenes    = Almacen::where('id_planta', $idPlanta)->get();
-        $almacenesIds = $almacenes->pluck('id');
+        // Información general de la planta / instalación
+        $dataGeneral = InformacionGeneralReporte::where('id_planta', $idPlanta)->first();
+        if (!$dataGeneral) {
+            return response()->json(['error' => 'No existe InformacionGeneralReporte para la planta'], 404);
+        }
 
-        // Si fecha_inicio_evento es TIMESTAMP/DATE en DB, este bloque está bien:
-        $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-            ->whereYear('fecha_inicio_evento', $year)
-            ->whereMonth('fecha_inicio_evento', $month)
-            ->orderBy('fecha_inicio_evento')
+        // Tanques (almacenes) de la planta
+        $tanques = Almacen::where('id_planta', $idPlanta)->get();
+
+        // Eventos del mes (por tanque)
+        $eventosMes = EventoAlmacen::where('id_planta', $idPlanta)
+            ->whereBetween('fecha_inicio_evento', [$inicioMes, $finMes])
+            ->orderBy('fecha_inicio_evento', 'asc')
             ->get();
 
-        // ----- Si fecha_inicio_evento FUERA varchar, usar este rango por mes (descomentar y comentar el bloque anterior):
-        // $iniMes = Carbon::create($year, $month, 1)->startOfMonth()->toDateTimeString();
-        // $finMes = Carbon::create($year, $month, 1)->endOfMonth()->toDateTimeString();
-        // $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-        //     ->whereRaw('"fecha_inicio_evento"::timestamp BETWEEN ? AND ?', [$iniMes, $finMes])
-        //     ->orderBy('fecha_inicio_evento')
-        //     ->get();
+        // Bitácora del mes (si aplica)
+        $bitacora = BitacoraEventos::where('id_planta', $idPlanta)
+            ->whereBetween('fecha_evento', [$inicioMes, $finMes])
+            ->orderBy('fecha_evento', 'asc')
+            ->get()
+            ->map(function ($b) {
+                return [
+                    'Evento'     => $b->evento ?? null,
+                    'Descripcion'=> $b->descripcion ?? null,
+                    'FechaHora'  => $this->fmtIso($b->fecha_evento, 'Y-m-d\TH:i:sP'),
+                ];
+            });
+
+        // Cálculo de agregados por tanque para el mes
+        $reporteTanques = [];
+        foreach ($tanques as $t) {
+            $evs = $eventosMes->where('id_almacen', $t->id);
+
+            // Primer y último evento del mes por tanque
+            $primer = $evs->sortBy('fecha_inicio_evento')->first();
+            $ultimo = $evs->sortByDesc('fecha_fin_evento')->first();
+
+            // Sumas por tipo
+            $volRecep = (float) $evs->where('tipo_evento', 'entrada')->sum('volumen_movido');
+            $volEnt   = (float) $evs->where('tipo_evento', 'salida')->sum('volumen_movido');
+
+            // Existencias según identidad: EI + R - E = EF
+            $existInicial = (float) ($primer->volumen_inicial ?? 0);
+            $existFinal   = (float) ($ultimo->volumen_final   ?? 0);
+
+            // Complemento mensual (consolidado) para RECEPCIONES y ENTREGAS
+            // - Puedes consolidar los CFDIs del mes asociados a eventos de este tanque
+            $cfdisRecepTanque = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'entrada')->pluck('id')->all());
+            $cfdisEntrTanque  = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'salida')->pluck('id')->all());
+
+            $compRecep = $this->buildComplementoAlmacenamiento([
+                'cfdis'                     => $cfdisRecepTanque,
+                'dictamen'                  => $this->obtenerDictamenMensual($idPlanta, $t->id, $inicioMes, $finMes),
+                'certificado'               => $this->obtenerCertificadoVigente($idPlanta),
+                'transporte'                => $this->obtenerTransporteMensual($idPlanta, $t->id, $inicioMes, $finMes),
+                'trasvase'                  => $this->obtenerTrasvaseMensual($idPlanta, $t->id, $inicioMes, $finMes),
+                'rfc_cliente_proveedor'     => $dataGeneral->rfc_proveedor ?? null,
+                'nombre_cliente_proveedor'  => $dataGeneral->descripcion_instalacion ?? null,
+                'permiso_proveedor'         => $dataGeneral->permiso_cre ?? null, // ajusta si manejas permiso del proveedor
+            ]);
+
+            $compEntr = $this->buildComplementoAlmacenamiento([
+                'cfdis'                     => $cfdisEntrTanque,
+                'dictamen'                  => $this->obtenerDictamenMensual($idPlanta, $t->id, $inicioMes, $finMes),
+                'certificado'               => $this->obtenerCertificadoVigente($idPlanta),
+                'transporte'                => $this->obtenerTransporteMensual($idPlanta, $t->id, $inicioMes, $finMes),
+                'trasvase'                  => $this->obtenerTrasvaseMensual($idPlanta, $t->id, $inicioMes, $finMes),
+                'rfc_cliente_proveedor'     => $dataGeneral->rfc_cliente ?? null,
+                'nombre_cliente_proveedor'  => $dataGeneral->nombre_cliente ?? null,
+                'permiso_proveedor'         => null,
+            ]);
+
+            $reporteTanques[] = [
+                'IdentificadorTanque' => $t->identificador ?? ("TQ-".$t->id),
+                'CapacidadTotal' => [
+                    'ValorNumerico'   => (float) ($t->capacidad_total ?? 0),
+                    'UnidadDeMedida'  => 'UM03', // litros
+                ],
+                'CapacidadOperativa' => [
+                    'ValorNumerico'   => (float) ($t->capacidad_operativa ?? 0),
+                    'UnidadDeMedida'  => 'UM03',
+                ],
+                'CapacidadFondaje' => [
+                    'ValorNumerico'   => (float) ($t->capacidad_fondaje ?? 0),
+                    'UnidadDeMedida'  => 'UM03',
+                ],
+                'ValorMinimoOperacion' => [
+                    'ValorNumerico'   => (float) ($t->valor_min_operacion ?? 0),
+                    'UnidadDeMedida'  => 'UM03',
+                ],
+                'VigenciaCalibracion' => [
+                    'FechaInicio' => $this->fmtIso($t->calibracion_inicio ?? null, 'Y-m-d'),
+                    'FechaFin'    => $this->fmtIso($t->calibracion_fin ?? null,    'Y-m-d'),
+                ],
+                'EstadoTanque' => $t->estado ?? 'OPERATIVO',
+
+                'REPORTEDEVOLUMENMENSUAL' => [
+                    'RECEPCIONES' => [
+                        'TotalRecepcionesMes' => (int) $evs->where('tipo_evento', 'entrada')->count(),
+                        'SumaVolumenRecepcionMes' => [
+                            'ValorNumerico'  => $this->round2($volRecep),
+                            'UM'             => 'UM03',
+                        ],
+                        'PoderCalorifico' => [
+                            'ValorNumerico'  => 11500, // TODO: si manejas dictamen con poder calorífico, cámbialo aquí
+                            'UM'             => 'UM03',
+                        ],
+                        'TotalDocumentosMes' => (int) ($cfdisRecepTanque->count()),
+                        'ImporteTotalRecepcionesMensual' => $this->sumImporteCfdis($cfdisRecepTanque),
+                        'Complemento' => $compRecep,
+                    ],
+                    'ENTREGAS' => [
+                        'TotalEntregasMes' => (int) $evs->where('tipo_evento', 'salida')->count(),
+                        'SumaVolumenEntregadoMes' => [
+                            'ValorNumerico'  => $this->round2($volEnt),
+                            'UM'             => 'UM03',
+                        ],
+                        'PoderCalorifico' => [
+                            'ValorNumerico'  => 11500,
+                            'UM'             => 'UM03',
+                        ],
+                        'TotalDocumentosMes' => (int) ($cfdisEntrTanque->count()),
+                        'ImporteTotalEntregasMensual' => $this->sumImporteCfdis($cfdisEntrTanque),
+                        'Complemento' => $compEntr,
+                    ],
+                    'CONTROLDEEXISTENCIAS' => [
+                        'ExistenciaInicialMes' => [
+                            'ValorNumerico' => $this->round2($existInicial),
+                            'UM'            => 'UM03',
+                        ],
+                        'ExistenciaFinalMes' => [
+                            'ValorNumerico' => $this->round2($existFinal),
+                            'UM'            => 'UM03',
+                        ],
+                        'FechaCorte' => $this->fmtIso($finMes, 'Y-m-d'),
+                    ],
+                ],
+            ];
+        }
+
+        // Armado del objeto instalación (limpiando campos NO aplicables a almacenamiento)
+        $caracter = $this->obtenerCaracter($dataGeneral);
+
+        $respuesta = [
+            'INSTALACION' => [
+                'NombreORazonSocial' => $dataGeneral->razon_social ?? null,
+                'RFC'                 => $dataGeneral->rfc ?? null,
+                'CURP'                => $dataGeneral->curp ?? null,
+                'Domicilio'           => [
+                    'Calle'         => $dataGeneral->calle ?? null,
+                    'NumeroExterior'=> $dataGeneral->numero_exterior ?? null,
+                    'NumeroInterior'=> $dataGeneral->numero_interior ?? null,
+                    'Colonia'       => $dataGeneral->colonia ?? null,
+                    'Municipio'     => $dataGeneral->municipio ?? null,
+                    'Entidad'       => $dataGeneral->entidad ?? null,
+                    'CP'            => $dataGeneral->cp ?? null,
+                ],
+                'Georreferencias' => [
+                    'Latitud'  => $dataGeneral->latitud ?? null,
+                    'Longitud' => $dataGeneral->longitud ?? null,
+                ],
+                'Caracter' => $caracter,
+
+                // >>> Campos de "instalación" depurados para almacenamiento <<<
+                'NumeroPozos'                        => 0,
+                'NumeroDuctosEntradaSalida'          => (int)($dataGeneral->numero_ductos_entrada_salida ?? 0), // si reportas líneas internas; si no, pon 0
+                'NumeroDuctosTransporteDistribucion' => 0,
+                'NumeroDispensarios'                 => 0,
+
+                // Periodo de reporte
+                'Periodo' => [
+                    'Tipo'       => 'MENSUAL',
+                    'Anio'       => $year,
+                    'Mes'        => $month,
+                    'FechaInicio'=> $this->fmtIso($inicioMes, 'Y-m-d'),
+                    'FechaFin'   => $this->fmtIso($finMes,   'Y-m-d'),
+                ],
+
+                'TANQUE' => $reporteTanques,
+                'BITACORA' => $bitacora,
+            ],
+        ];
+
+        return response()->json($respuesta);
+    }
+
+    /**
+     * Reporte DIARIO por fecha (estrictamente almacenamiento)
+     */
+    private function generarReporteDiarioPorFecha(int $idPlanta, string $fechaYmd)
+    {
+        $fecha = Carbon::parse($fechaYmd)->startOfDay();
+        $inicio = (clone $fecha);
+        $fin    = (clone $fecha)->endOfDay();
+
+        $dataGeneral = InformacionGeneralReporte::where('id_planta', $idPlanta)->first();
+        if (!$dataGeneral) {
+            return response()->json(['error' => 'No existe InformacionGeneralReporte para la planta'], 404);
+        }
+
+        $tanques = Almacen::where('id_planta', $idPlanta)->get();
+        $eventosDia = EventoAlmacen::where('id_planta', $idPlanta)
+            ->whereBetween('fecha_inicio_evento', [$inicio, $fin])
+            ->orderBy('fecha_inicio_evento', 'asc')
+            ->get();
+
+        $reporteTanques = [];
+        foreach ($tanques as $t) {
+            $evs = $eventosDia->where('id_almacen', $t->id);
+
+            // Primer/último del día por tanque
+            $primer = $evs->sortBy('fecha_inicio_evento')->first();
+            $ultimo = $evs->sortByDesc('fecha_fin_evento')->first();
+
+            $volRecep = (float) $evs->where('tipo_evento', 'entrada')->sum('volumen_movido');
+            $volEnt   = (float) $evs->where('tipo_evento', 'salida')->sum('volumen_movido');
+
+            $existInicial = (float) ($primer->volumen_inicial ?? 0);
+            $existFinal   = (float) ($ultimo->volumen_final   ?? 0);
+
+            // Complemento diario (por simplicidad, consolidado por tanque en el día)
+            $cfdisRecepTanque = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'entrada')->pluck('id')->all());
+            $cfdisEntrTanque  = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'salida')->pluck('id')->all());
+
+            $compRecep = $this->buildComplementoAlmacenamiento([
+                'cfdis'                    => $cfdisRecepTanque,
+                'dictamen'                 => $this->obtenerDictamenDiario($idPlanta, $t->id, $inicio, $fin),
+                'certificado'              => $this->obtenerCertificadoVigente($idPlanta),
+                'transporte'               => $this->obtenerTransporteDiario($idPlanta, $t->id, $inicio, $fin),
+                'trasvase'                 => $this->obtenerTrasvaseDiario($idPlanta, $t->id, $inicio, $fin),
+                'rfc_cliente_proveedor'    => $dataGeneral->rfc_proveedor ?? null,
+                'nombre_cliente_proveedor' => $dataGeneral->descripcion_instalacion ?? null,
+                'permiso_proveedor'        => $dataGeneral->permiso_cre ?? null,
+            ]);
+
+            $compEntr = $this->buildComplementoAlmacenamiento([
+                'cfdis'                    => $cfdisEntrTanque,
+                'dictamen'                 => $this->obtenerDictamenDiario($idPlanta, $t->id, $inicio, $fin),
+                'certificado'              => $this->obtenerCertificadoVigente($idPlanta),
+                'transporte'               => $this->obtenerTransporteDiario($idPlanta, $t->id, $inicio, $fin),
+                'trasvase'                 => $this->obtenerTrasvaseDiario($idPlanta, $t->id, $inicio, $fin),
+                'rfc_cliente_proveedor'    => $dataGeneral->rfc_cliente ?? null,
+                'nombre_cliente_proveedor' => $dataGeneral->nombre_cliente ?? null,
+            ]);
+
+            $reporteTanques[] = [
+                'IdentificadorTanque' => $t->identificador ?? ("TQ-".$t->id),
+                'REPORTEDEVOLUMENDIARIO' => [
+                    'FechaReporte' => $this->fmtIso($fecha, 'Y-m-d'),
+                    'RECEPCIONES' => [
+                        'TotalRecepcionesDia' => (int) $evs->where('tipo_evento', 'entrada')->count(),
+                        'VolumenRecepcionDia' => [
+                            'ValorNumerico' => $this->round2($volRecep),
+                            'UM'            => 'UM03',
+                        ],
+                        'FechaYHoraRecepcionDia' => $this->fmtIso($primer->fecha_inicio_evento ?? null, 'H:i:sP'),
+                        'Complemento' => $compRecep,
+                    ],
+                    'ENTREGAS' => [
+                        'TotalEntregasDia' => (int) $evs->where('tipo_evento', 'salida')->count(),
+                        'VolumenEntregadoDia' => [
+                            'ValorNumerico' => $this->round2($volEnt),
+                            'UM'            => 'UM03',
+                        ],
+                        'FechaYHoraEntregaDia' => $this->fmtIso($ultimo->fecha_fin_evento ?? null, 'H:i:sP'),
+                        'Complemento' => $compEntr,
+                    ],
+                    'CONTROLDEEXISTENCIAS' => [
+                        'ExistenciaInicialDia' => [
+                            'ValorNumerico' => $this->round2($existInicial),
+                            'UM'            => 'UM03',
+                        ],
+                        'ExistenciaFinalDia' => [
+                            'ValorNumerico' => $this->round2($existFinal),
+                            'UM'            => 'UM03',
+                        ],
+                    ],
+                ],
+            ];
+        }
 
         $caracter = $this->obtenerCaracter($dataGeneral);
 
-        $totalRecepciones = $eventos->where('tipo_evento', 'entrada');
-        $totalEntregas    = $eventos->where('tipo_evento', 'salida');
+        $respuesta = [
+            'INSTALACION' => [
+                'NombreORazonSocial' => $dataGeneral->razon_social ?? null,
+                'RFC'                 => $dataGeneral->rfc ?? null,
+                'Caracter'            => $caracter,
+                'Periodo' => [
+                    'Tipo'       => 'DIARIO',
+                    'Fecha'      => $this->fmtIso($fecha, 'Y-m-d'),
+                ],
+                'TANQUE' => $reporteTanques,
+            ],
+        ];
 
-        $volumenRecepcion = (float) $totalRecepciones->sum('volumen_movido');
-        $volumenEntrega   = (float) $totalEntregas->sum('volumen_movido');
+        return response()->json($respuesta);
+    }
 
-        // TODO: sustituir por cálculos reales si corresponde
-        $importeRecepciones = 96000.00;
-        $importeEntregas    = 135000.00;
+    /**
+     * Reportes DIARIOS del mes (lista)
+     */
+    private function generarReportesDiariosPorMes(int $idPlanta, int $year, int $month)
+    {
+        $inicioMes = Carbon::create($year, $month, 1, 0, 0, 0);
+        $finMes    = (clone $inicioMes)->endOfMonth()->setTime(23, 59, 59);
 
-        $complementosRecepcion = Cfdi::whereIn('evento_id', $totalRecepciones->pluck('id'))
-            ->get()
-            ->map(function ($cfdi) {
-                return [
-                    "UUID"               => $cfdi->UUID,
-                    "Fecha"              => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d\TH:i:s'),
-                    "Proveedor"          => $cfdi->NombreEmisorCFDI,
-                    "VolumenRelacionado" => (float) $cfdi->MontoTotalOperacion,
-                    "Unidad"             => "L",
-                ];
-            });
+        $fechas = [];
+        $cursor = (clone $inicioMes);
+        while ($cursor->lte($finMes)) {
+            $fechas[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
 
-        $complementosEntrega = Cfdi::whereIn('evento_id', $totalEntregas->pluck('id'))
-            ->get()
-            ->map(function ($cfdi) {
-                return [
-                    "UUID"               => $cfdi->UUID,
-                    "Fecha"              => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d\TH:i:s'),
-                    "Cliente"            => $cfdi->NombreEmisorCFDI,
-                    "VolumenRelacionado" => (float) $cfdi->MontoTotalOperacion,
-                    "Unidad"             => "L",
-                ];
-            });
-
-        $tanques = $almacenes->map(function ($tanque) {
-            return [
-                "ClaveIdentificacionTanque"     => $tanque->clave_almacen,
-                "LocalizacionDescripcionTanque" => $tanque->localizacion_descripcion_almacen,
-                "VigenciaCalibracionTanque"     => $tanque->vigencia_calibracion_tanque,
-                "CapacidadTotalTanque"          => ["ValorNumerico" => (float) $tanque->capacidad_almacen,  "UnidadDeMedida" => "UM03"],
-                "CapacidadOperativaTanque"      => ["ValorNumerico" => (float) $tanque->capacidad_operativa, "UnidadDeMedida" => "UM03"],
-                "CapacidadUtilTanque"           => ["ValorNumerico" => (float) $tanque->capacidad_util,       "UnidadDeMedida" => "UM03"],
-                "CapacidadFondajeTanque"        => ["ValorNumerico" => (float) $tanque->capacidad_fondaje,    "UnidadDeMedida" => "UM03"],
-                "CapacidadGasTalon"             => ["ValorNumerico" => 0.0,                                   "UnidadDeMedida" => "UM03"],
-                "VolumenMinimoOperacion"        => ["ValorNumerico" => (float) $tanque->volumen_minimo_operacion, "UnidadDeMedida" => "UM03"],
-                "EstadoTanque"                  => $tanque->estado_tanque,
-                "Medidores"                     => [],
-            ];
-        })->toArray();
-
-        // --- BITÁCORA mensual: rango de mes + cast seguro a timestamp (evita extract())
-        $inicioMes = Carbon::create($year, $month, 1)->startOfMonth();
-        $finMes    = Carbon::create($year, $month, 1)->endOfMonth();
-
-        $bitacora = BitacoraEventos::where('id_planta', $idPlanta)
-            ->whereRaw('"FechaYHoraEvento"::timestamp BETWEEN ? AND ?', [
-                $inicioMes->toDateTimeString(),
-                $finMes->toDateTimeString(),
-            ])
-            ->orderBy('FechaYHoraEvento')
-            ->get()
-            ->map(function ($registro, $index) {
-                return [
-                    "NumeroRegistro"                 => $index + 1,
-                    "FechaYHoraEvento"               => $this->fmtIso($registro->FechaYHoraEvento, 'Y-m-d\TH:i:sP'),
-                    "UsuarioResponsable"             => $registro->UsuarioResponsable,
-                    "TipoEvento"                     => $registro->TipoEvento,
-                    "DescripcionEvento"              => $registro->DescripcionEvento,
-                    "IdentificacionComponenteAlarma" => $registro->IdentificacionComponenteAlarma,
-                ];
-            })
-            ->toArray();
+        $lista = [];
+        foreach ($fechas as $f) {
+            $lista[$f] = $this->generarReporteDiarioPorFecha($idPlanta, $f)->getData(true);
+        }
 
         return response()->json([
-            "TipoReporte"             => "M",
-            "Version"                 => "1.0",
-            "RfcContribuyente"        => $dataGeneral->rfc_contribuyente,
-            "RfcProveedor"            => $dataGeneral->rfc_proveedor,
-            "Caracter"                => $caracter,
-            "ClaveInstalacion"        => $dataGeneral->clave_instalacion,
-            "DescripcionInstalacion"  => $dataGeneral->descripcion_instalacion,
-            "Geolocalizacion"         => [
-                "GeolocalizacionLatitud"  => $dataGeneral->geolocalizacion_latitud,
-                "GeolocalizacionLongitud" => $dataGeneral->geolocalizacion_longitud, // <- corregido
+            'periodo' => [
+                'year'  => $year,
+                'month' => $month,
+                'inicio'=> $inicioMes->toDateString(),
+                'fin'   => $finMes->toDateString(),
             ],
-            "NumeroPozos"                         => $dataGeneral->numero_pozos,
-            "NumeroTanques"                       => $dataGeneral->numero_tanques,
-            "NumeroDuctosEntradaSalida"           => $dataGeneral->numero_ductos_entrada_salida,
-            "NumeroDuctosTransporteDistribucion"  => $dataGeneral->numero_ductos_transporte,
-            "NumeroDispensarios"                  => $dataGeneral->numero_dispensarios,
-            "FechaYHoraReporteMes"                => Carbon::create($year, $month, 1)->endOfMonth()->format('Y-m-d\T23:59:59P'),
-            "PRODUCTO" => [[
-                "ClaveProducto"               => "PR12",
-                "ComposDePropanoEnGasLP"     => 91.5720,
-                "ComposDeButanoEnGasLP"      => 8.4279,
-                "TANQUE"                     => $tanques,
-                "REPORTEDEVOLUMENMENSUAL"    => [
-                    "CONTROLDEEXISTENCIAS" => [
-                        "VolumenExistenciasMes"       => ["ValorNumerico" => 2500.00, "UM" => "UM03"],
-                        "FechaYHoraEstaMedicionMes"   => Carbon::create($year, $month, 1)->endOfMonth()->format('Y-m-d\T23:59:00P'),
-                    ],
-                    "RECEPCIONES" => [
-                        "TotalRecepcionesMes"         => $totalRecepciones->count(),
-                        "SumaVolumenRecepcionMes"     => ["ValorNumerico" => $volumenRecepcion, "UM" => "UM03"],
-                        "PoderCalorifico"              => ["ValorNumerico" => 11500, "UM" => "UM03"],
-                        "TotalDocumentosMes"          => $totalRecepciones->count(),
-                        "ImporteTotalRecepcionesMensual" => $importeRecepciones,
-                        "Complemento"                 => $complementosRecepcion,
-                    ],
-                    "ENTREGAS" => [
-                        "TotalEntregasMes"            => $totalEntregas->count(),
-                        "SumaVolumenEntregadoMes"     => ["ValorNumerico" => $volumenEntrega, "UM" => "UM03"],
-                        "PoderCalorifico"              => ["ValorNumerico" => 11500, "UM" => "UM03"],
-                        "TotalDocumentosMes"          => $totalEntregas->count(),
-                        "ImporteTotalEntregasMes"     => $importeEntregas,
-                        "Complemento"                 => $complementosEntrega,
-                    ],
-                ],
-            ]],
-            "BITACORA" => $bitacora,
+            'reportes' => $lista,
         ]);
     }
 
-    /** -------------------------------------
-     *  GENERADOR DE REPORTES DIARIOS x MES
-     *  -------------------------------------
+    /* ============================================================
+     * Helpers de Complemento Almacenamiento
+     * ============================================================
      */
-    private function generarReportesDiariosPorMes($idPlanta, $year, $month)
-    {
-        $almacenes    = Almacen::where('id_planta', $idPlanta)->get();
-        $almacenesIds = $almacenes->pluck('id');
 
-        // Si 'fecha_inicio_evento' es TIMESTAMP/DATE, ok:
-        $fechasUnicas = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-            ->whereYear('fecha_inicio_evento', $year)
-            ->whereMonth('fecha_inicio_evento', $month)
-            ->pluck('fecha_inicio_evento')
-            ->map(fn ($f) => $this->fmtIso($f, 'Y-m-d')) // normaliza a string YYYY-MM-DD
-            ->unique()
-            ->values();
-
-        // ----- Si 'fecha_inicio_evento' fuera varchar, usar rango por mes (como antes):
-        // $iniMes = Carbon::create($year, $month, 1)->startOfMonth()->toDateTimeString();
-        // $finMes = Carbon::create($year, $month, 1)->endOfMonth()->toDateTimeString();
-        // $fechasUnicas = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-        //     ->whereRaw('"fecha_inicio_evento"::timestamp BETWEEN ? AND ?', [$iniMes, $finMes])
-        //     ->pluck('fecha_inicio_evento')
-        //     ->map(fn($f) => $this->fmtIso($f, 'Y-m-d'))
-        //     ->unique()
-        //     ->values();
-
-        if ($fechasUnicas->isEmpty()) {
-            return [];
-        }
-        $reportes = [];
-        foreach ($fechasUnicas as $fecha) {
-            $reporte    = $this->generarReporteDiarioPorFecha($idPlanta, $fecha);
-            $reportes[] = ["Fecha" => $fecha, "REPORTE" => $reporte];
-        }
-
-        return $reportes;
-    }
-
-    /** ---------------------------
-     *  REPORTE DIARIO POR FECHA
-     *  ---------------------------
-     */
-    private function generarReporteDiarioPorFecha($idPlanta, $fecha)
-    {
-        if (empty($fecha)) {
-            // Evita el "Undefined variable $fecha" si alguien llama mal este método
-            abort(400, 'La fecha es obligatoria para el reporte diario');
-        }
-        
-        $dataGeneral = InformacionGeneralReporte::where('id_planta', $idPlanta)->firstOrFail();
-
-        $almacenes    = Almacen::where('id_planta', $idPlanta)->get();
-        $almacenesIds = $almacenes->pluck('id');
-
-        // Si fecha_inicio_evento es DATE/TIMESTAMP:
-        $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-            ->whereDate('fecha_inicio_evento', $fecha)
-            ->orderBy('fecha_inicio_evento')
-            ->get();
-
-        // ----- Si fuera varchar, usar rango diario:
-        // $ini = Carbon::parse($fecha)->startOfDay()->toDateTimeString();
-        // $fin = Carbon::parse($fecha)->endOfDay()->toDateTimeString();
-        // $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-        //     ->whereRaw('"fecha_inicio_evento"::timestamp BETWEEN ? AND ?', [$ini, $fin])
-        //     ->orderBy('fecha_inicio_evento')
-        //     ->get();
-
-        $cfdis = Cfdi::whereIn('evento_id', $eventos->pluck('id'))
-            ->get()
-            ->groupBy('evento_id');
-
-        $caracter = $this->obtenerCaracter($dataGeneral);
-
-        $tanquesBase = $almacenes->map(function ($tanque) use ($eventos, $cfdis, $fecha) {
-
-            $eventosTanque  = $eventos->where('id_almacen', $tanque->id);
-            $primerEvento   = $eventosTanque->sortBy('fecha_inicio_evento')->first();
-            $ultimoEvento   = $eventosTanque->sortByDesc('fecha_fin_evento')->first();
-
-            $volumenInicial = $primerEvento->volumen_inicial ?? 0;
-            $volumenFinal   = $ultimoEvento->volumen_final   ?? 0;
-
-            $recepcionesEventos = $eventosTanque->where('tipo_evento', 'entrada');
-            $entregasEventos    = $eventosTanque->where('tipo_evento', 'salida');
-
-            // Parseo seguro de horas (pueden ser string)
-            $horaRecepcion = optional($recepcionesEventos->last())->fecha_fin_evento;
-            $horaEntrega   = optional($entregasEventos->last())->fecha_fin_evento;
-
-            $horaRecepFmt = $this->fmtIso($horaRecepcion, 'H:i:sP');
-            $horaEntreFmt = $this->fmtIso($horaEntrega,   'H:i:sP');
-
-            $existencia = [
-                "VolumenExistenciasAnterior" => ["ValorNumerico" => (float) $volumenInicial, "UnidadDeMedida" => "UM03"],
-                "VolumenAcumOpsRecepcion"    => ["ValorNumerico" => (float) $recepcionesEventos->sum('volumen_movido'), "UnidadDeMedida" => "UM03"],
-                "HoraRecepcionAcumulado"     => $horaRecepFmt,
-                "VolumenAcumOpsEntrega"      => ["ValorNumerico" => (float) $entregasEventos->sum('volumen_movido'),   "UnidadDeMedida" => "UM03"],
-                "HoraEntregaAcumulado"       => $horaEntreFmt,
-                "VolumenExistencias"         => ["ValorNumerico" => (float) $volumenFinal, "UnidadDeMedida" => "UM03"],
-                "FechaYHoraEstaMedicion"     => $this->fmtIso(Carbon::parse($fecha)->endOfDay(), 'Y-m-d\TH:i:sP'),
-                "FechaYHoraMedicionAnterior" => $this->fmtIso(Carbon::parse($fecha)->subDay()->endOfDay(), 'Y-m-d\TH:i:sP'),
-            ];
-
-            $recepciones = $recepcionesEventos->map(function ($evento) use ($cfdis) {
-                return [
-                    "VolumenDespuesRecepcion" => ["ValorNumerico" => (float) $evento->volumen_final,  "UnidadDeMedida" => "UM03"],
-                    "VolumenRecepcion"        => ["ValorNumerico" => (float) $evento->volumen_movido, "UnidadDeMedida" => "UM03"],
-                    "Temperatura"             => (float) $evento->temperatura,
-                    "PresionAbsoluta"         => (float) $evento->presion_absoluta,
-                    "FechaYHoraInicioRecepcion" => $this->fmtIso($evento->fecha_inicio_evento, 'Y-m-d\TH:i:sP'),
-                    "FechaYHoraFinRecepcion"    => $this->fmtIso($evento->fecha_fin_evento,    'Y-m-d\TH:i:sP'),
-                    "Complemento" => collect($cfdis->get($evento->id))->map(function ($cfdi) {
-                        return [
-                            "TipoComplemento"       => "CFDI",
-                            "Version"               => $cfdi->Version,
-                            "UUID"                  => $cfdi->UUID,
-                            "RFCEmisorCFDI"         => $cfdi->RFCEmisorCFDI,
-                            "NombreEmisorCFDI"      => $cfdi->NombreEmisorCFDI,
-                            "RFCProveedorReceptor"  => $cfdi->RFCProveedorReceptor,
-                            "MontoTotalOperacion"   => (float) $cfdi->MontoTotalOperacion,
-                            "FechaCFDI"             => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d'),
-                        ];
-                    })->values(),
-                ];
-            })->values();
-
-            $entregas = $entregasEventos->map(function ($evento) use ($cfdis) {
-                return [
-                    "VolumenDespuesEntrega"      => ["ValorNumerico" => (float) $evento->volumen_final,  "UnidadDeMedida" => "UM03"],
-                    "VolumenEntregado"           => ["ValorNumerico" => (float) $evento->volumen_movido, "UnidadDeMedida" => "UM03"],
-                    "Temperatura"                => (float) $evento->temperatura,
-                    "PresionAbsoluta"            => (float) $evento->presion_absoluta,
-                    "FechaYHoraInicioEntrega"    => $this->fmtIso($evento->fecha_inicio_evento, 'Y-m-d\TH:i:sP'),
-                    "FechaYHoraFinEntrega"       => $this->fmtIso($evento->fecha_fin_evento,    'Y-m-d\TH:i:sP'),
-                    "Complemento" => collect($cfdis->get($evento->id))->map(function ($cfdi) {
-                        return [
-                            "TipoComplemento"       => "CFDI",
-                            "Version"               => $cfdi->Version,
-                            "UUID"                  => $cfdi->UUID,
-                            "RFCEmisorCFDI"         => $cfdi->RFCEmisorCFDI,
-                            "NombreEmisorCFDI"      => $cfdi->NombreEmisorCFDI,
-                            "RFCProveedorReceptor"  => $cfdi->RFCProveedorReceptor,
-                            "MontoTotalOperacion"   => (float) $cfdi->MontoTotalOperacion,
-                            "FechaCFDI"             => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d'),
-                        ];
-                    })->values(),
-                ];
-            })->values();
-
-            return [
-                "ClaveIdentificacionTanque"     => $tanque->clave_almacen,
-                "LocalizacionDescripcionTanque" => $tanque->localizacion_descripcion_almacen,
-                "VigenciaCalibracionTanque"     => $tanque->vigencia_calibracion_tanque,
-                "CapacidadTotalTanque"          => ["ValorNumerico" => (float) $tanque->capacidad_almacen,  "UnidadDeMedida" => "UM03"],
-                "CapacidadOperativaTanque"      => ["ValorNumerico" => (float) $tanque->capacidad_operativa, "UnidadDeMedida" => "UM03"],
-                "CapacidadUtilTanque"           => ["ValorNumerico" => (float) $tanque->capacidad_util,       "UnidadDeMedida" => "UM03"],
-                "CapacidadFondajeTanque"        => ["ValorNumerico" => (float) $tanque->capacidad_fondaje,    "UnidadDeMedida" => "UM03"],
-                "CapacidadGasTalon"             => ["ValorNumerico" => 0.0,                                   "UnidadDeMedida" => "UM03"],
-                "VolumenMinimoOperacion"        => ["ValorNumerico" => (float) $tanque->volumen_minimo_operacion, "UnidadDeMedida" => "UM03"],
-                "EstadoTanque"                  => $tanque->estado_tanque,
-                "Medidores"                     => [],
-                "EXISTENCIAS"                   => $existencia,
-                "RECEPCIONES"                   => $recepciones,
-                "ENTREGAS"                      => $entregas,
-            ];
-        })->toArray();
-
-        // --- BITÁCORA diaria: compara por fecha con cast seguro (si fuera varchar)
-        $bitacora = BitacoraEventos::where('id_planta', $idPlanta)
-            ->whereRaw('DATE("FechaYHoraEvento"::timestamp) = ?', [$fecha])
-            // Alternativa equivalentes por rango diario (más eficiente si indexas):
-            // ->whereRaw('"FechaYHoraEvento"::timestamp BETWEEN ? AND ?', [
-            //     Carbon::parse($fecha)->startOfDay()->toDateTimeString(),
-            //     Carbon::parse($fecha)->endOfDay()->toDateTimeString(),
-            // ])
-            ->orderBy('FechaYHoraEvento')
-            ->get()
-            ->map(function ($registro, $index) {
-                return [
-                    "NumeroRegistro"                 => $index + 1,
-                    "FechaYHoraEvento"               => $this->fmtIso($registro->FechaYHoraEvento, 'Y-m-d\TH:i:sP'),
-                    "UsuarioResponsable"             => $registro->UsuarioResponsable,
-                    "TipoEvento"                     => $registro->TipoEvento,
-                    "DescripcionEvento"              => $registro->DescripcionEvento,
-                    "IdentificacionComponenteAlarma" => $registro->IdentificacionComponenteAlarma,
-                ];
-            })
-            ->toArray();
-
-        return [
-            "TipoReporte"            => "D",
-            "Version"                => "1.0",
-            "RfcContribuyente"       => $dataGeneral->rfc_contribuyente,
-            "RfcProveedor"           => $dataGeneral->rfc_proveedor,
-            "Caracter"               => $caracter,
-            "ClaveInstalacion"       => $dataGeneral->clave_instalacion,
-            "DescripcionInstalacion" => $dataGeneral->descripcion_instalacion,
-            "Geolocalizacion"        => [
-                "GeolocalizacionLatitud"  => $dataGeneral->geolocalizacion_latitud,
-                "GeolocalizacionLongitud" => $dataGeneral->geolocalizacion_longitud, // <- corregido
-            ],
-            "NumeroPozos"                        => $dataGeneral->numero_pozos,
-            "NumeroTanques"                      => $dataGeneral->numero_tanques,
-            "NumeroDuctosEntradaSalida"          => $dataGeneral->numero_ductos_entrada_salida,
-            "NumeroDuctosTransporteDistribucion" => $dataGeneral->numero_ductos_transporte,
-            "NumeroDispensarios"                 => $dataGeneral->numero_dispensarios,
-            "FechaYHoraCorte"                    => $this->fmtIso(Carbon::parse($fecha)->endOfDay(), 'Y-m-d\TH:i:sP'),
-            "Producto" => [[
-                "ClaveProducto"               => "PR12",
-                "ComposDePropanoEnGasLP"     => 91.5720,
-                "ComposDeButanoEnGasLP"      => 8.4279,
-                "TANQUE"                     => $tanquesBase,
-            ]],
-            "BITACORA" => $bitacora,
-        ];
-    }
-
-    /** ---------------------------
-     *  CARACTER (sin cambios)
-     *  ---------------------------
-     */
-    private function obtenerCaracter($dataGeneral)
-    {
-        switch ($dataGeneral->tipo_caracter) {
-            case 'permisionario':
-                return [
-                    'TipoCaracter'     => $dataGeneral->tipo_caracter,
-                    'ModalidadPermiso' => $dataGeneral->modalidad_permiso,
-                    'NumPermiso'       => $dataGeneral->numero_permiso,
-                ];
-            case 'asignatario':
-            case 'contratista':
-                return [
-                    'TipoCaracter'             => $dataGeneral->tipo_caracter,
-                    'NumContratoOAsignacion'   => $dataGeneral->numero_contrato_asignacion,
-                ];
-            case 'usuario':
-                return [
-                    'TipoCaracter'                      => $dataGeneral->tipo_caracter,
-                    'InstalacionAlmacenGasNatural'      => $dataGeneral->instalacion_almacen_gas,
-                ];
-            default:
-                return [
-                    'TipoCaracter' => $dataGeneral->tipo_caracter,
-                    'Mensaje'      => 'Tipo de caracter no reconocido',
-                ];
-        }
-    }
-
-    /** -------------------------------------------------
-     *  HELPERS de fecha: parseo seguro + formateador ISO
-     *  -------------------------------------------------
-     */
     /**
-     * Intenta parsear una fecha (string|Carbon|\DateTime|null) y devolver Carbon.
-     * Si falla, devuelve null sin lanzar excepción.
+     * Constructor del Complemento Almacenamiento conforme a la guía.
+     * $contexto keys: cfdis(Collection<Cfdi>), pedimentos(Collection), dictamen(obj), certificado(obj),
+     *                 transporte(obj/array), trasvase(obj/array),
+     *                 rfc_cliente_proveedor, nombre_cliente_proveedor, permiso_proveedor,
+     *                 punto_internacion, pais_origen, medio_transporte_aduana, incoterms,
+     *                 precio_importacion, volumen_importado
      */
-    private function toCarbonOrNull($value): ?Carbon
+    private function buildComplementoAlmacenamiento(array $contexto): array
     {
-        if ($value instanceof Carbon) {
-            return $value;
-        }
-        if ($value instanceof \DateTimeInterface) {
-            return Carbon::instance($value);
-        }
-        if (is_string($value) && $value !== '') {
-            try {
-                return Carbon::parse($value);
-            } catch (\Throwable $e) {
-                return null;
+        $comp = [];
+
+        // NACIONAL: CFDIs de compra/venta o servicios ligados al volumen
+        if (!empty($contexto['cfdis']) && count($contexto['cfdis']) > 0) {
+            $cfdisArr = [];
+            foreach ($contexto['cfdis'] as $c) {
+                $cfdisArr[] = [
+                    'UUID'                     => $c->UUID,
+                    'TipoCFDI'                 => $c->TipoCFDI ?? null,
+                    'PrecioCompra'             => $c->PrecioCompra ?? null,
+                    'Contraprestacion'         => $c->Contraprestacion ?? null,
+                    'TarifaDeAlmacenamiento'   => $c->TarifaDeAlmacenamiento ?? null,
+                    'CargoPorCapacidadAlmac'   => $c->CargoPorCapacidadAlmac ?? null,
+                    'CargoPorUsoAlmac'         => $c->CargoPorUsoAlmac ?? null,
+                    'CargoVolumetricoAlmac'    => $c->CargoVolumetricoAlmac ?? null,
+                    'Descuento'                => $c->Descuento ?? null,
+                    'FechaYHoraTransaccion'    => $this->fmtIso($c->FechaCFDI ?? null, 'Y-m-d\TH:i:s'),
+                    'VolumenDocumentado'       => [
+                        'ValorNumerico' => (float)($c->VolumenDocumentadoValor ?? $c->MontoTotalOperacion ?? 0),
+                        'UM'            => 'UM03',
+                    ],
+                ];
             }
+
+            $comp['NACIONAL'] = [
+                'RfcClienteOProveedor'       => $contexto['rfc_cliente_proveedor'] ?? null,
+                'NombreClienteOProveedor'    => $contexto['nombre_cliente_proveedor'] ?? null,
+                'PermisoProveedor'           => $contexto['permiso_proveedor'] ?? null,
+                'CFDIs' => [
+                    'CFDI' => $cfdisArr,
+                ],
+            ];
         }
+
+        // EXTRANJERO: si hubo importación/pedimentos
+        if (!empty($contexto['pedimentos']) && count($contexto['pedimentos']) > 0) {
+            $comp['EXTRANJERO'] = [
+                'PermisoImportacion' => $contexto['permiso_importacion'] ?? null,
+                'PEDIMENTOS' => [
+                    'PuntoDeInternacion'       => $contexto['punto_internacion'] ?? null,
+                    'PaisOrigen'               => $contexto['pais_origen'] ?? null,
+                    'MedioDeTransEntraAduana'  => $contexto['medio_transporte_aduana'] ?? null,
+                    'PedimentoAduanal'         => $contexto['pedimentos'][0]['numero'] ?? null,
+                    'Incoterms'                => $contexto['incoterms'] ?? null,
+                    'PrecioDeImportacion'      => $contexto['precio_importacion'] ?? null,
+                    'VolumenDocumentado'       => [
+                        'ValorNumerico' => (float)($contexto['volumen_importado'] ?? 0),
+                        'UM'            => 'UM03',
+                    ],
+                ],
+            ];
+        }
+
+        // DICTAMEN (lote / tipo de producto)
+        if (!empty($contexto['dictamen'])) {
+            $d = (object)$contexto['dictamen'];
+            $comp['DICTAMEN'] = [
+                'RfcDictamen'          => $d->rfc ?? 'XAX010101000', // genérica si aplica el caso previsto por la guía
+                'LoteDictamen'         => $d->lote ?? null,
+                'NumeroFolioDictamen'  => $d->folio ?? null,
+                'FechaEmisionDictamen' => $this->fmtIso($d->fecha ?? null, 'Y-m-d'),
+                'ResultadoDictamen'    => $d->resultado ?? null,
+            ];
+        }
+
+        // CERTIFICADO (verificación anual)
+        if (!empty($contexto['certificado'])) {
+            $c = (object)$contexto['certificado'];
+            $comp['CERTIFICADO'] = [
+                'RfcCertificado'          => $c->rfc ?? null,
+                'NumeroFolioCertificado'  => $c->folio ?? null,
+                'FechaEmisionCertificado' => $this->fmtIso($c->fecha ?? null, 'Y-m-d'),
+                'ResultadoCertificado'    => $c->resultado ?? null,
+            ];
+        }
+
+        // TRANSPORTE (si se contrató para la recepción/entrega)
+        if (!empty($contexto['transporte'])) {
+            $t = (object)$contexto['transporte'];
+            $comp['TRANSPORTE'] = [
+                'Transporte' => [
+                    'PermisoTransporte'      => $t->permiso ?? null,
+                    'ClaveDeVehiculo'        => $t->vehiculo ?? null, // para medios distintos a ducto
+                    'TarifaDeTransporte'     => $t->tarifa ?? 0,
+                    'CargoPorCapacidadTrans' => $t->cargo_capacidad ?? null, // ductos
+                    'CargoPorUsoTrans'       => $t->cargo_uso ?? null,       // ductos
+                    'CargoVolumetricoTrans'  => $t->cargo_volumetrico ?? null, // ductos
+                ],
+            ];
+        }
+
+        // TRASVASE (si se contrató)
+        if (!empty($contexto['trasvase'])) {
+            $tv = (object)$contexto['trasvase'];
+            $comp['TRASVASE'] = [
+                'NombreTrasvase'      => $tv->nombre ?? null,
+                'RfcTrasvase'         => $tv->rfc ?? null,
+                'PermisoTrasvase'     => $tv->permiso ?? null,
+                'DescripcionTrasvase' => $tv->descripcion ?? null,
+                'CfdiTrasvase'        => $tv->uuid_cfdi ?? null,
+            ];
+        }
+
+        return $comp;
+    }
+
+    /* ============================================================
+     * Helpers de obtención de datos (stub: conéctalos a tus tablas)
+     * ============================================================
+     */
+
+    private function buscarCfdisPorEventos(array $eventoIds)
+    {
+        if (empty($eventoIds)) return collect();
+        // Ajusta: si tu Cfdi tiene campo evento_id
+        return Cfdi::whereIn('evento_id', $eventoIds)->get();
+    }
+
+    private function obtenerDictamenMensual(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
+    {
+        // TODO: Conectar a tu tabla de dictámenes (o instrumentos en línea)
         return null;
     }
 
-    /**
-     * Formatea un valor de fecha a un patrón. Si no es parseable, devuelve null.
-     * $pattern ejemplo: 'Y-m-d\TH:i:sP'
-     */
-    private function fmtIso($value, string $pattern)
+    private function obtenerDictamenDiario(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        $dt = $value instanceof Carbon ? $value : $this->toCarbonOrNull($value);
-        return $dt ? $dt->format($pattern) : null;
+        // TODO: Conectar a tu tabla de dictámenes (o instrumentos en línea)
+        return null;
+    }
+
+    private function obtenerCertificadoVigente(int $idPlanta)
+    {
+        // TODO: Conectar a tu tabla de certificados (anual, vigente a la fecha/periodo)
+        return null;
+    }
+
+    private function obtenerTransporteMensual(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
+    {
+        // TODO: Conectar a tu tabla de contratos/servicios de transporte (si se contrató)
+        return null;
+    }
+
+    private function obtenerTransporteDiario(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
+    {
+        // TODO
+        return null;
+    }
+
+    private function obtenerTrasvaseMensual(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
+    {
+        // TODO: Conectar a tu tabla de trasvase (si se contrató)
+        return null;
+    }
+
+    private function obtenerTrasvaseDiario(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
+    {
+        // TODO
+        return null;
+    }
+
+    /* ============================================================
+     * Utilerías
+     * ============================================================
+     */
+
+    private function toCarbonOrNull($value): ?Carbon
+    {
+        if (!$value) return null;
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function fmtIso($value, string $format = 'Y-m-d\TH:i:sP'): ?string
+    {
+        $c = $this->toCarbonOrNull($value);
+        return $c ? $c->format($format) : null;
+    }
+
+    private function round2($n): float
+    {
+        return round((float)$n, 2);
+    }
+
+    private function sumImporteCfdis($cfdis): float
+    {
+        if (!$cfdis || count($cfdis) === 0) return 0.0;
+        // Ajusta el campo del importe total según tu modelo
+        return (float) collect($cfdis)->sum(function ($c) {
+            return (float) ($c->MontoTotalOperacion ?? 0);
+        });
+    }
+
+    /**
+     * Construye el nodo "Caracter" según la guía (permisionario/asignatario-contratista/usuario).
+     * Ajusta estos campos a los de tu modelo InformacionGeneralReporte.
+     */
+    private function obtenerCaracter($dataGeneral): array
+    {
+        $tipo = $dataGeneral->tipo_caracter ?? 'PERMISIONARIO'; // PERMISIONARIO | ASIGNATARIO_O_CONTRATISTA | USUARIO
+        $out = ['TipoCaracter' => $tipo];
+
+        if ($tipo === 'PERMISIONARIO') {
+            $out['Modalidad']     = $dataGeneral->modalidad ?? null; // p.ej. ALMACENAMIENTO
+            $out['PermisoCRE']    = $dataGeneral->permiso_cre ?? null;
+        } elseif ($tipo === 'ASIGNATARIO_O_CONTRATISTA') {
+            $out['NumeroContratoAsignacion'] = $dataGeneral->numero_contrato_asignacion ?? null;
+            $out['Tipo'] = $dataGeneral->tipo_asignacion ?? null; // ASIGNATARIO o CONTRATISTA
+        } elseif ($tipo === 'USUARIO') {
+            // usuarios de gas natural (aprovechamiento/recepción fija de gas natural)
+            $out['InstalacionGasNatural'] = [
+                'Nombre' => $dataGeneral->descripcion_instalacion ?? null,
+                'RFC'    => $dataGeneral->rfc ?? null,
+            ];
+        }
+
+        return $out;
     }
 }

@@ -4,55 +4,62 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Cfdi;
+use Illuminate\Support\Facades\Validator;
 
 class CfdiController extends Controller
 {
     public function store(Request $request)
-{
-    $request->validate([
-        'evento_id' => 'required|exists:eventos_almacen,id',
+    {
+        // 1) Normalizamos: tomamos primero PascalCase (lo que manda el front),
+        // y si no viene, usamos snake_case por si algún cliente ya lo envía así.
+        $data = [
+            'evento_id'                  => $request->input('evento_id'),
+            'tipo_complemento'           => $request->input('TipoComplemento', $request->input('tipo_complemento', 'CFDI')),
+            'version'                    => $request->input('Version', $request->input('version', '1.0')),
+            'uuid'                       => $request->input('UUID', $request->input('uuid')),
+            'rfc_emisor'                 => $request->input('RFCEmisorCFDI', $request->input('rfc_emisor')),
+            'nombre_emisor'              => $request->input('NombreEmisorCFDI', $request->input('nombre_emisor')),
+            'rfc_receptor'               => $request->input('RFCProveedorReceptor', $request->input('rfc_receptor')),
+            'monto_total'                => $request->input('MontoTotalOperacion', $request->input('monto_total')),
+            'fecha_hora'                 => $request->input('FechaCFDI', $request->input('fecha_hora')),
+            'tipo_cfdi'                  => $request->input('TipoCFDI', $request->input('tipo_cfdi')),
+            'precio_compra'              => $request->input('PrecioCompra', $request->input('precio_compra')),
+            'contraprestacion'           => $request->input('Contraprestacion', $request->input('contraprestacion')),
+            'volumen_documentado_valor'  => $request->input('VolumenDocumentadoValor', $request->input('volumen_documentado_valor')),
+            'volumen_documentado_unidad' => $request->input('VolumenDocumentadoUnidad', $request->input('volumen_documentado_unidad')),
+        ];
 
-        // estas llaves llegan desde el front en PascalCase
-        'UUID'                 => 'required|string',
-        'RFCEmisorCFDI'        => 'required|string',
-        'NombreEmisorCFDI'     => 'nullable|string',
-        'RFCProveedorReceptor' => 'nullable|string',
-        'MontoTotalOperacion'  => 'nullable|numeric',
-        'FechaCFDI'            => 'required|date',
+        // 2) Reglas de validación con los nombres REALES de columnas
+        $rules = [
+            'evento_id' => 'required|exists:eventos_almacen,id',
 
-        // si también te mandan estos, valídalos:
-        'TipoComplemento'            => 'nullable|string',
-        'Version'                    => 'nullable|string',
-        'TipoCFDI'                   => 'nullable|string',
-        'VolumenDocumentadoValor'    => 'nullable|numeric',
-        'VolumenDocumentadoUnidad'   => 'nullable|string',
-    ]);
+            'uuid'       => 'required|string',
+            'rfc_emisor' => 'required|string',
+            'fecha_hora' => 'required|date',
 
-    // Mapeo PascalCase (request) -> snake_case (DB)
-    $cfdi = Cfdi::create([
-        'evento_id'                   => $request->input('evento_id'),
-        'tipo_complemento'            => $request->input('TipoComplemento', 'CFDI'),
-        'version'                     => $request->input('Version', '1.0'),
-        'uuid'                        => $request->input('UUID'),
-        'rfc_emisor_cfdi'             => $request->input('RFCEmisorCFDI'),
-        'nombre_emisor_cfdi'          => $request->input('NombreEmisorCFDI'),
-        'rfc_proveedor_receptor'      => $request->input('RFCProveedorReceptor'),
-        'monto_total_operacion'       => $request->input('MontoTotalOperacion'),
-        'fecha_cfdi'                  => $request->input('FechaCFDI'),
-        'tipo_cfdi'                   => $request->input('TipoCFDI'),
-        'volumen_documentado_valor'   => $request->input('VolumenDocumentadoValor'),
-        'volumen_documentado_unidad'  => $request->input('VolumenDocumentadoUnidad'),
-    ]);
+            'tipo_complemento'           => 'nullable|string',
+            'version'                    => 'nullable|string',
+            'tipo_cfdi'                  => 'nullable|string|in:ingreso,traslado,egreso,Ingreso,Traslado,Egreso',
+            'monto_total'                => 'nullable|numeric',
+            'precio_compra'              => 'nullable|numeric',
+            'contraprestacion'           => 'nullable|numeric',
+            'volumen_documentado_valor'  => 'nullable|numeric',
+            'volumen_documentado_unidad' => 'nullable|string',
+            'nombre_emisor'              => 'nullable|string',
+            'rfc_receptor'               => 'nullable|string',
+        ];
 
-    return response()->json(['success' => true, 'cfdi' => $cfdi], 201);
-}
+        Validator::make($data, $rules)->validate();
 
+        // 3) Crear CFDI
+        $cfdi = Cfdi::create($data);
+
+        return response()->json(['success' => true, 'cfdi' => $cfdi], 201);
+    }
 
     public function index($evento_id)
     {
         $cfdis = Cfdi::where('evento_id', $evento_id)->get();
         return response()->json($cfdis);
     }
-
-    
 }

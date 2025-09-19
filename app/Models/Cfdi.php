@@ -4,27 +4,25 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Cfdis extends Model
+class Cfdi extends Model
 {
     protected $table = 'cfdis';
 
     protected $fillable = [
         'evento_id',
-        'tipo_complemento', // si decides conservarlo (ahora no lo toqué)
-        'version',          // idem
-
         'uuid',
         'rfc_emisor',
         'nombre_emisor',
         'rfc_receptor',
         'monto_total',
         'fecha_hora',
-
         'tipo_cfdi',
         'precio_compra',
         'contraprestacion',
         'volumen_documentado_valor',
         'volumen_documentado_unidad',
+        'tipo_complemento',
+        'version',
     ];
 
     protected $casts = [
@@ -40,6 +38,7 @@ class Cfdis extends Model
         return $this->belongsTo(EventoAlmacen::class, 'evento_id');
     }
 
+    // Si usas la tabla pivote enriquecida evento_cfdi:
     public function eventoCfdis()
     {
         return $this->hasMany(EventoCfdi::class, 'cfdi_id');

@@ -8,7 +8,7 @@ use App\Models\InformacionGeneralReporte;
 use App\Models\EventoAlmacen;
 use App\Models\BitacoraEventos;
 use App\Models\Almacen;
-use App\Models\Cfdis;
+use App\Models\Cfdi;
 use Carbon\Carbon;
 
 class GenReporteVolumetricoController extends Controller
@@ -71,7 +71,7 @@ class GenReporteVolumetricoController extends Controller
         $importeRecepciones = 96000.00;
         $importeEntregas    = 135000.00;
 
-        $complementosRecepcion = Cfdis::whereIn('evento_id', $totalRecepciones->pluck('id'))
+        $complementosRecepcion = Cfdi::whereIn('evento_id', $totalRecepciones->pluck('id'))
             ->get()
             ->map(function ($cfdi) {
                 return [
@@ -83,7 +83,7 @@ class GenReporteVolumetricoController extends Controller
                 ];
             });
 
-        $complementosEntrega = Cfdis::whereIn('evento_id', $totalEntregas->pluck('id'))
+        $complementosEntrega = Cfdi::whereIn('evento_id', $totalEntregas->pluck('id'))
             ->get()
             ->map(function ($cfdi) {
                 return [
@@ -254,7 +254,7 @@ class GenReporteVolumetricoController extends Controller
         //     ->orderBy('fecha_inicio_evento')
         //     ->get();
 
-        $cfdis = Cfdis::whereIn('evento_id', $eventos->pluck('id'))
+        $cfdis = Cfdi::whereIn('evento_id', $eventos->pluck('id'))
             ->get()
             ->groupBy('evento_id');
 

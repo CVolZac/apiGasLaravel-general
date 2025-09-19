@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\EventoAlmacen;
-use App\Models\Cfdis;
+use App\Models\Cfdi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;

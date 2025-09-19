@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Cfdis;
+use App\Models\Cfdi;
 
 class CfdiController extends Controller
 {
@@ -19,7 +19,7 @@ class CfdiController extends Controller
             'FechaCFDI' => 'required|date'
         ]);
 
-        $cfdi = Cfdis::create([
+        $cfdi = Cfdi::create([
             'evento_id' => $request->evento_id,
             'TipoComplemento' => 'CFDI',
             'Version' => '1.0',
@@ -36,7 +36,7 @@ class CfdiController extends Controller
 
     public function index($evento_id)
     {
-        $cfdis = Cfdis::where('evento_id', $evento_id)->get();
+        $cfdis = Cfdi::where('evento_id', $evento_id)->get();
         return response()->json($cfdis);
     }
 

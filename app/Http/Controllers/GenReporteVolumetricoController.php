@@ -4,21 +4,16 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\InformacionGeneralReporte;
 use App\Models\EventoAlmacen;
 use App\Models\BitacoraEventos;
 use App\Models\Almacen;
-use App\Models\Cfdi; // Si tu modelo es Cfdis, cambia este use y las referencias abajo.
+use App\Models\Cfdi; // Si tu modelo es Cfdis, cámbialo aquí y abajo.
 use Carbon\Carbon;
 
 class GenReporteVolumetricoController extends Controller
 {
-    /**
-     * Punto de entrada:
-     *  - $tipoDM = 0 -> Mensual (almacenamiento)
-     *  - $tipoDM = 1 -> Diario por fecha (almacenamiento)
-     *  - $tipoDM = 2 -> Serie de diarios por mes (almacenamiento)
-     */
     public function generarReporte($idPlanta, $yearAndMonth, $tipoDM)
     {
         date_default_timezone_set('America/Mexico_City');
@@ -30,9 +25,10 @@ class GenReporteVolumetricoController extends Controller
         if ($tipoDM == 0) {
             return $this->generarReporteMensualAlmacen($idPlanta, $year, $month);
         } elseif ($tipoDM == 1) {
+            // Antes fallaba si no venía ?fecha=
             $fecha = request()->query('fecha');
             if (!$fecha) {
-                return response()->json(['error' => 'Falta parámetro fecha=YYYY-MM-DD'], 422);
+                $fecha = Carbon::now('America/Mexico_City')->toDateString();
             }
             return $this->generarReporteDiarioPorFecha($idPlanta, $fecha);
         } elseif ($tipoDM == 2) {
@@ -42,12 +38,10 @@ class GenReporteVolumetricoController extends Controller
         return response()->json(['error' => 'tipoDM inválido'], 400);
     }
 
-    /**
-     * Reporte MENSUAL (estrictamente almacenamiento)
-     */
+    /* ==================== MENSUAL ==================== */
     private function generarReporteMensualAlmacen(int $idPlanta, int $year, int $month)
     {
-        $inicioMes = Carbon::create($year, $month, 1, 0, 0, 0);
+        $inicioMes = Carbon::create($year, $month, 1, 0, 0, 0, 'America/Mexico_City');
         $finMes    = (clone $inicioMes)->endOfMonth()->setTime(23, 59, 59);
 
         $dataGeneral = InformacionGeneralReporte::where('id_planta', $idPlanta)->first();
@@ -55,25 +49,26 @@ class GenReporteVolumetricoController extends Controller
             return response()->json(['error' => 'No existe InformacionGeneralReporte para la planta'], 404);
         }
 
-        // Tanques por planta y sus IDs (clave para filtrar eventos/bitácora)
-        $tanques = Almacen::where('id_planta', $idPlanta)->get();
-        $idsTanques = $tanques->pluck('id')->all();
+        // IDs de tanques por planta (soporta id_planta o planta_id)
+        [$tanques, $idsTanques] = $this->idsTanquesPorPlanta($idPlanta);
 
-        // Eventos del mes: filtra por id_almacen (NO por id_planta)
+        // Eventos del mes (por id_almacen)
         $eventosMes = EventoAlmacen::whereIn('id_almacen', $idsTanques)
             ->whereBetween('fecha_inicio_evento', [$inicioMes, $finMes])
             ->orderBy('fecha_inicio_evento', 'asc')
             ->get();
 
-        // Bitácora del mes: filtra por id_almacen (NO por id_planta)
-        $bitacora = BitacoraEventos::whereIn('id_almacen', $idsTanques)
+        // Bitácora del mes (detecta columna disponible)
+        $bitacoraQuery = BitacoraEventos::query();
+        $this->aplicarFiltroBitacoraPorPlantaOTanques($bitacoraQuery, $idPlanta, $idsTanques);
+        $bitacora = $bitacoraQuery
             ->whereBetween('fecha_evento', [$inicioMes, $finMes])
             ->orderBy('fecha_evento', 'asc')
             ->get()
             ->map(function ($b) {
                 return [
                     'Evento'     => $b->evento ?? null,
-                    'Descripcion'=> $b->descripcion ?? null,
+                    'Descripcion' => $b->descripcion ?? null,
                     'FechaHora'  => $this->fmtIso($b->fecha_evento, 'Y-m-d\TH:i:sP'),
                 ];
             });
@@ -91,7 +86,6 @@ class GenReporteVolumetricoController extends Controller
             $existInicial = (float) ($primer->volumen_inicial ?? 0);
             $existFinal   = (float) ($ultimo->volumen_final   ?? 0);
 
-            // Complementos consolidados por tanque para el mes
             $cfdisRecepTanque = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'entrada')->pluck('id')->all());
             $cfdisEntrTanque  = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'salida')->pluck('id')->all());
 
@@ -117,7 +111,7 @@ class GenReporteVolumetricoController extends Controller
             ]);
 
             $reporteTanques[] = [
-                'IdentificadorTanque' => $t->identificador ?? ("TQ-".$t->id),
+                'IdentificadorTanque' => $t->identificador ?? ("TQ-" . $t->id),
                 'CapacidadTotal' => [
                     'ValorNumerico'   => (float) ($t->capacidad_total ?? 0),
                     'UnidadDeMedida'  => 'UM03',
@@ -148,7 +142,7 @@ class GenReporteVolumetricoController extends Controller
                             'UM'             => 'UM03',
                         ],
                         'PoderCalorifico' => [
-                            'ValorNumerico'  => 11500, // TODO: llenar desde dictamen si lo tienes
+                            'ValorNumerico'  => 11500,
                             'UM'             => 'UM03',
                         ],
                         'TotalDocumentosMes' => (int) ($cfdisRecepTanque->count()),
@@ -193,8 +187,8 @@ class GenReporteVolumetricoController extends Controller
                 'CURP'                => $dataGeneral->curp ?? null,
                 'Domicilio'           => [
                     'Calle'         => $dataGeneral->calle ?? null,
-                    'NumeroExterior'=> $dataGeneral->numero_exterior ?? null,
-                    'NumeroInterior'=> $dataGeneral->numero_interior ?? null,
+                    'NumeroExterior' => $dataGeneral->numero_exterior ?? null,
+                    'NumeroInterior' => $dataGeneral->numero_interior ?? null,
                     'Colonia'       => $dataGeneral->colonia ?? null,
                     'Municipio'     => $dataGeneral->municipio ?? null,
                     'Entidad'       => $dataGeneral->entidad ?? null,
@@ -206,7 +200,7 @@ class GenReporteVolumetricoController extends Controller
                 ],
                 'Caracter' => $caracter,
 
-                // Campos NO aplicables a almacenamiento forzados a 0
+                // Solo almacenamiento
                 'NumeroPozos'                        => 0,
                 'NumeroDuctosEntradaSalida'          => (int)($dataGeneral->numero_ductos_entrada_salida ?? 0),
                 'NumeroDuctosTransporteDistribucion' => 0,
@@ -216,7 +210,7 @@ class GenReporteVolumetricoController extends Controller
                     'Tipo'       => 'MENSUAL',
                     'Anio'       => $year,
                     'Mes'        => $month,
-                    'FechaInicio'=> $this->fmtIso($inicioMes, 'Y-m-d'),
+                    'FechaInicio' => $this->fmtIso($inicioMes, 'Y-m-d'),
                     'FechaFin'   => $this->fmtIso($finMes,   'Y-m-d'),
                 ],
 
@@ -228,12 +222,10 @@ class GenReporteVolumetricoController extends Controller
         return response()->json($respuesta);
     }
 
-    /**
-     * Reporte DIARIO por fecha (estrictamente almacenamiento)
-     */
+    /* ==================== DIARIO ==================== */
     private function generarReporteDiarioPorFecha(int $idPlanta, string $fechaYmd)
     {
-        $fecha  = Carbon::parse($fechaYmd)->startOfDay();
+        $fecha  = Carbon::parse($fechaYmd, 'America/Mexico_City')->startOfDay();
         $inicio = (clone $fecha);
         $fin    = (clone $fecha)->endOfDay();
 
@@ -242,11 +234,8 @@ class GenReporteVolumetricoController extends Controller
             return response()->json(['error' => 'No existe InformacionGeneralReporte para la planta'], 404);
         }
 
-        // Tanques por planta y sus IDs
-        $tanques = Almacen::where('id_planta', $idPlanta)->get();
-        $idsTanques = $tanques->pluck('id')->all();
+        [$tanques, $idsTanques] = $this->idsTanquesPorPlanta($idPlanta);
 
-        // Eventos del día: filtra por id_almacen (NO por id_planta)
         $eventosDia = EventoAlmacen::whereIn('id_almacen', $idsTanques)
             ->whereBetween('fecha_inicio_evento', [$inicio, $fin])
             ->orderBy('fecha_inicio_evento', 'asc')
@@ -265,7 +254,6 @@ class GenReporteVolumetricoController extends Controller
             $existInicial = (float) ($primer->volumen_inicial ?? 0);
             $existFinal   = (float) ($ultimo->volumen_final   ?? 0);
 
-            // Complementos consolidados por tanque en el día
             $cfdisRecepTanque = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'entrada')->pluck('id')->all());
             $cfdisEntrTanque  = $this->buscarCfdisPorEventos($evs->where('tipo_evento', 'salida')->pluck('id')->all());
 
@@ -291,8 +279,8 @@ class GenReporteVolumetricoController extends Controller
             ]);
 
             $reporteTanques[] = [
-                'IdentificadorTanque' => $t->identificador ?? ("TQ-".$t->id),
-                'REPORTEDEVOLUMENDIARIO' => [
+                'IdentificadorTanque'      => $t->identificador ?? ("TQ-" . $t->id),
+                'REPORTEDEVOLUMENDIARIO'   => [
                     'FechaReporte' => $this->fmtIso($fecha, 'Y-m-d'),
                     'RECEPCIONES' => [
                         'TotalRecepcionesDia' => (int) $evs->where('tipo_evento', 'entrada')->count(),
@@ -344,12 +332,10 @@ class GenReporteVolumetricoController extends Controller
         return response()->json($respuesta);
     }
 
-    /**
-     * Reportes DIARIOS del mes (lista)
-     */
+    /* ==================== SERIE DIARIA POR MES ==================== */
     private function generarReportesDiariosPorMes(int $idPlanta, int $year, int $month)
     {
-        $inicioMes = Carbon::create($year, $month, 1, 0, 0, 0);
+        $inicioMes = Carbon::create($year, $month, 1, 0, 0, 0, 'America/Mexico_City');
         $finMes    = (clone $inicioMes)->endOfMonth()->setTime(23, 59, 59);
 
         $fechas = [];
@@ -361,7 +347,6 @@ class GenReporteVolumetricoController extends Controller
 
         $lista = [];
         foreach ($fechas as $f) {
-            // Importante: usamos el mismo método diario ya corregido
             $lista[$f] = $this->generarReporteDiarioPorFecha($idPlanta, $f)->getData(true);
         }
 
@@ -369,17 +354,14 @@ class GenReporteVolumetricoController extends Controller
             'periodo' => [
                 'year'  => $year,
                 'month' => $month,
-                'inicio'=> $inicioMes->toDateString(),
+                'inicio' => $inicioMes->toDateString(),
                 'fin'   => $finMes->toDateString(),
             ],
             'reportes' => $lista,
         ]);
     }
 
-    /* ============================================================
-     * Builder del Complemento Almacenamiento
-     * ============================================================
-     */
+    /* ==================== Complemento Almacenamiento ==================== */
     private function buildComplementoAlmacenamiento(array $contexto): array
     {
         $comp = [];
@@ -410,9 +392,7 @@ class GenReporteVolumetricoController extends Controller
                 'RfcClienteOProveedor'       => $contexto['rfc_cliente_proveedor'] ?? null,
                 'NombreClienteOProveedor'    => $contexto['nombre_cliente_proveedor'] ?? null,
                 'PermisoProveedor'           => $contexto['permiso_proveedor'] ?? null,
-                'CFDIs' => [
-                    'CFDI' => $cfdisArr,
-                ],
+                'CFDIs' => ['CFDI' => $cfdisArr],
             ];
         }
 
@@ -488,56 +468,80 @@ class GenReporteVolumetricoController extends Controller
         return $comp;
     }
 
-    /* ============================================================
-     * Helpers de obtención de datos (stub: conéctalos a tus tablas)
-     * ============================================================
-     */
-
+    /* ==================== Helpers datos ==================== */
     private function buscarCfdisPorEventos(array $eventoIds)
     {
         if (empty($eventoIds)) return collect();
-        return Cfdi::whereIn('evento_id', $eventoIds)->get(); // Ajusta si tu campo es distinto
+        return Cfdi::whereIn('evento_id', $eventoIds)->get(); // Ajusta si tu campo difiere
     }
 
     private function obtenerDictamenMensual(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        return null; // Conecta a tu tabla de dictámenes si la tienes
+        return null;
     }
-
     private function obtenerDictamenDiario(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        return null; // Conecta a tu tabla de dictámenes si la tienes
+        return null;
     }
-
     private function obtenerCertificadoVigente(int $idPlanta)
     {
-        return null; // Conecta a tu tabla de certificados si la tienes
+        return null;
     }
-
     private function obtenerTransporteMensual(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        return null; // Conecta a tu tabla de servicios de transporte si aplica
+        return null;
     }
-
     private function obtenerTransporteDiario(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        return null; // Conecta a tu tabla de servicios de transporte si aplica
+        return null;
     }
-
     private function obtenerTrasvaseMensual(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        return null; // Conecta a tu tabla de trasvase si aplica
+        return null;
     }
-
     private function obtenerTrasvaseDiario(int $idPlanta, int $idTanque, Carbon $ini, Carbon $fin)
     {
-        return null; // Conecta a tu tabla de trasvase si aplica
+        return null;
     }
 
-    /* ============================================================
-     * Utilerías
-     * ============================================================
-     */
+    /* ==================== Utilerías ==================== */
+    private function idsTanquesPorPlanta(int $idPlanta): array
+    {
+        // Soporta esquemas distintos: 'id_planta' o 'planta_id'
+        $tanquesQuery = Almacen::query();
+        if (Schema::hasColumn((new Almacen)->getTable(), 'id_planta')) {
+            $tanquesQuery->where('id_planta', $idPlanta);
+        } elseif (Schema::hasColumn((new Almacen)->getTable(), 'planta_id')) {
+            $tanquesQuery->where('planta_id', $idPlanta);
+        } else {
+            // Último recurso: todos los tanques (evitar 0 resultados en entornos variados)
+            $tanquesQuery->whereRaw('1=1');
+        }
+        $tanques = $tanquesQuery->get();
+        return [$tanques, $tanques->pluck('id')->all()];
+    }
+
+    private function aplicarFiltroBitacoraPorPlantaOTanques($query, int $idPlanta, array $idsTanques): void
+    {
+        $table = (new BitacoraEventos)->getTable(); // p.ej. 'bitacora_eventos'
+        // Preferencia: por id_almacen si existe; si no, almacen_id; si no, por id_planta; si no, sin filtro por tanque
+        if (!empty($idsTanques)) {
+            if (Schema::hasColumn($table, 'id_almacen')) {
+                $query->whereIn('id_almacen', $idsTanques);
+                return;
+            }
+            if (Schema::hasColumn($table, 'almacen_id')) {
+                $query->whereIn('almacen_id', $idsTanques);
+                return;
+            }
+        }
+        if (Schema::hasColumn($table, 'id_planta')) {
+            $query->where('id_planta', $idPlanta);
+            return;
+        }
+        // Si tu esquema usa otro nombre, agrega un elseif aquí.
+        // Como último recurso, no filtro por planta/tanque (solo por fechas) para no romper.
+    }
 
     private function toCarbonOrNull($value): ?Carbon
     {
@@ -563,26 +567,20 @@ class GenReporteVolumetricoController extends Controller
     private function sumImporteCfdis($cfdis): float
     {
         if (!$cfdis || count($cfdis) === 0) return 0.0;
-        return (float) collect($cfdis)->sum(function ($c) {
-            return (float) ($c->MontoTotalOperacion ?? 0);
-        });
+        return (float) collect($cfdis)->sum(fn($c) => (float) ($c->MontoTotalOperacion ?? 0));
     }
 
-    /**
-     * Construye el nodo "Caracter".
-     * Ajusta estos campos a los de tu modelo InformacionGeneralReporte.
-     */
     private function obtenerCaracter($dataGeneral): array
     {
-        $tipo = $dataGeneral->tipo_caracter ?? 'PERMISIONARIO'; // PERMISIONARIO | ASIGNATARIO_O_CONTRATISTA | USUARIO
+        $tipo = $dataGeneral->tipo_caracter ?? 'PERMISIONARIO';
         $out = ['TipoCaracter' => $tipo];
 
         if ($tipo === 'PERMISIONARIO') {
-            $out['Modalidad']  = $dataGeneral->modalidad ?? null; // p.ej. ALMACENAMIENTO
-            $out['PermisoCRE'] = $dataGeneral->permiso_cre ?? null;
+            $out['Modalidad']  = $dataGeneral->modalidad ?? 'ALMACENAMIENTO'; // <= aquí va "="
+            $out['PermisoCRE'] = $dataGeneral->permiso_cre ?? null;           // <= aquí va "="
         } elseif ($tipo === 'ASIGNATARIO_O_CONTRATISTA') {
             $out['NumeroContratoAsignacion'] = $dataGeneral->numero_contrato_asignacion ?? null;
-            $out['Tipo'] = $dataGeneral->tipo_asignacion ?? null; // ASIGNATARIO o CONTRATISTA
+            $out['Tipo'] = $dataGeneral->tipo_asignacion ?? null;
         } elseif ($tipo === 'USUARIO') {
             $out['InstalacionGasNatural'] = [
                 'Nombre' => $dataGeneral->descripcion_instalacion ?? null,

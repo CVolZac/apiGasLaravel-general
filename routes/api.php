@@ -76,19 +76,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/v1/planta/{id}', 'destroy');
     });
 
-    // Rutas en las que se realiozará todas las operaciones siempre y cuenado el usuario este logueado
-    // Rutas para el medidor de turbina
-
-    // Ruta para la informacion de pipas
-    /*
-    Route::controller(PipaController::class)->group(function () {
-        Route::get('/v1/pipa/{idPlanta}', 'index');
-        Route::get('/v1/pipa/{id}', 'show');
-        Route::post('/v1/pipa', 'store');
-        Route::post('/v1/pipa/{id}', 'update');
-        Route::delete('/v1/pipa/{id}', 'destroy');
-    });
-    */
 
     //Registro llenado del almacen
     Route::controller(RegistroLlenadoAlmacenController::class)->group(function () {
@@ -99,28 +86,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/v1/almacen-registro/{id}', 'destroy');
     });
 
-    //Registro para el reporte volumetrico
-    /*
-    Route::controller(ReporteVolumetrico::class)->group(function(){
-        Route::get('/v1/reporte/volumetrico/{idPlanta}', 'index');
-        Route::get('/v1/reporte/volumetrico/{id}', 'show');
-        Route::post('/v1/reporte/volumetrico', 'store');
-        Route::post('/v1/reporte/volumetrico/{id}', 'update');
-        Route::delete('/v1/reporte/volumetrico/{id}', 'destroy');
-    });
-    
-
-    //Registro para entradas y salidas
-    Route::controller(RegistroEntradasSalidasPipaController::class)->group(function () {
-        Route::get('/v1/entrada-salida-pipa/registro/{idPlanta}', 'index');
-        Route::get('/v1/entrada-salida-pipa/registro/{id}', 'show');
-        Route::post('/v1/entrada-salida-pipa/registro', 'store');
-        Route::post('/v1/entrada-salida-pipa/registro/{id}', 'update');
-        Route::delete('/v1/entrada-salida-pipa/registro/{id}', 'destroy');
-    });
-    */
-
-    //Registro de mantetnimiento del medidor
 
     //Registro Información Generar del reporte
     Route::controller(InformacionGeneralReporteController::class)->group(function () {
@@ -218,5 +183,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/bitacoraComercializador/{idPlanta}', 'index');
         Route::get('/v1/bitacoraComercializador/{idPlanta}/{id}', 'show');
         Route::post('/v1/bitacoraComercializador', 'store');
+    });
+
+    // Evento CFDI asociado a Tanque Virtual
+    Route::controller(TipoCaracterPlantaController::class)->group(function () {
+        Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}', 'index');
+        Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}/{id}', 'show');
+        Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
+        Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');
     });
 });

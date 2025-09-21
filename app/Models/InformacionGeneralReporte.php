@@ -12,7 +12,7 @@ class InformacionGeneralReporte extends Model
     protected $table = 'informacion_general_reporte';
 
     protected $casts = [
-    'rfc_proveedores' => 'array'
+        'rfc_proveedores' => 'array'
     ];
 
 
@@ -37,4 +37,10 @@ class InformacionGeneralReporte extends Model
         'numero_ductos_transporte',
         'numero_dispensarios',
     ];
+
+    // app/Models/InformacionGeneralReporte.php
+    public function tiposCaracter()
+    {
+        return $this->hasMany(\App\Models\TipoCaracterPlanta::class, 'informacion_general_reporte_id');
+    }
 }

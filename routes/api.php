@@ -3,10 +3,8 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginRegisterController;
-use App\Http\Controllers\PipaController;
 use App\Http\Controllers\RegistroLlenadoAlmacenController;
 //use App\Http\Controllers\ReporteVolumetrico;
-use App\Http\Controllers\RegistroEntradasSalidasPipaController;
 use App\Http\Controllers\InformacionGeneralReporteController;
 use App\Http\Controllers\GenReporteVolumetricoController;
 use App\Http\Controllers\RolesUsuariosController;
@@ -28,6 +26,9 @@ use App\Http\Controllers\TanqueVirtualController;
 use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
+
+use App\Http\Controllers\TipoCaracterPlantaController;
+
 
 // Rutas publicas para acceder o registrar una cuenta
 Route::controller(LoginRegisterController::class)->group(function () {
@@ -79,6 +80,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Rutas para el medidor de turbina
 
     // Ruta para la informacion de pipas
+    /*
     Route::controller(PipaController::class)->group(function () {
         Route::get('/v1/pipa/{idPlanta}', 'index');
         Route::get('/v1/pipa/{id}', 'show');
@@ -86,6 +88,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/pipa/{id}', 'update');
         Route::delete('/v1/pipa/{id}', 'destroy');
     });
+    */
 
     //Registro llenado del almacen
     Route::controller(RegistroLlenadoAlmacenController::class)->group(function () {
@@ -105,7 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/reporte/volumetrico/{id}', 'update');
         Route::delete('/v1/reporte/volumetrico/{id}', 'destroy');
     });
-    */
+    
 
     //Registro para entradas y salidas
     Route::controller(RegistroEntradasSalidasPipaController::class)->group(function () {
@@ -115,6 +118,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/entrada-salida-pipa/registro/{id}', 'update');
         Route::delete('/v1/entrada-salida-pipa/registro/{id}', 'destroy');
     });
+    */
 
     //Registro de mantetnimiento del medidor
 

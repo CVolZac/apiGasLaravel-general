@@ -1,4 +1,3 @@
-// database/migrations/2025_09_21_000000_create_tipo_caracter_planta_table.php
 <?php
 
 use Illuminate\Database\Migrations\Migration;

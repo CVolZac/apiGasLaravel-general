@@ -187,7 +187,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Evento CFDI asociado a Tanque Virtual
     Route::controller(TipoCaracterPlantaController::class)->group(function () {
-        Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}', 'index');
+        Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}', 'indexPorInfoGeneral');
         Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}/{id}', 'show');
         Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
         Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');

@@ -7,9 +7,6 @@ use App\Models\InformacionGeneralReporte;
 
 class InformacionGeneralReporteController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index($idPlanta)
     {
         try {
@@ -20,50 +17,77 @@ class InformacionGeneralReporteController extends Controller
         }
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
+    // --- Helper para normalizar rfc_proveedores ---
+    private function normalizeRfcProveedores($value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter(
+                array_map(fn($v) => is_string($v) ? trim($v) : $v, $value),
+                fn($v) => !is_null($v) && $v !== ''
+            ));
+        }
+        if (is_string($value)) {
+            $value = trim($value);
+            if ($value === '') return [];
+            return array_values(array_filter(
+                array_map('trim', explode(',', $value)),
+                fn($v) => $v !== ''
+            ));
+        }
+        // también aceptamos JSON string
+        if (is_string($value) && $this->looksLikeJson($value)) {
+            $decoded = json_decode($value, true);
+            return is_array($decoded) ? $this->normalizeRfcProveedores($decoded) : [];
+        }
+        return [];
+    }
+
+    private function looksLikeJson(string $s): bool
+    {
+        $s = trim($s);
+        return (str_starts_with($s, '[') && str_ends_with($s, ']')) ||
+               (str_starts_with($s, '{') && str_ends_with($s, '}'));
+    }
+
     public function store(Request $request)
     {
         try {
-            $data['id_planta'] = $request['id_planta'];
-            $data['rfc_contribuyente'] = $request['rfc_contribuyente'];
-            $data['rfc_representante_legal'] = $request['rfc_representante_legal'];
-            $data['rfc_proveedor'] = $request['rfc_proveedor'];
+            // Validación mínima; ajusta a tus reglas reales
+            $validated = $request->validate([
+                'id_planta' => 'required|integer',
+                'rfc_contribuyente' => 'required|string',
+                'rfc_representante_legal' => 'nullable|string',
+                'rfc_proveedor' => 'nullable|string',
+                // puede llegar como string (coma) o como array
+                'rfc_proveedores' => 'nullable',
+                'tipo_caracter' => 'nullable|string',
+                'modalidad_permiso' => 'nullable|string',
+                'numero_permiso' => 'nullable|string',
+                'numero_contrato_asignacion' => 'nullable|string',
+                'instalacion_almacen_gas' => 'nullable|string',
+                'clave_instalacion' => 'nullable|string',
+                'descripcion_instalacion' => 'nullable|string',
+                'geolocalizacion_latitud' => 'nullable|numeric',
+                'geolocalizacion_longitud' => 'nullable|numeric',
+                'numero_pozos' => 'nullable|integer',
+                'numero_tanques' => 'nullable|integer',
+                'numero_ductos_entrada_salida' => 'nullable|integer',
+                'numero_ductos_transporte' => 'nullable|integer',
+                'numero_dispensarios' => 'nullable|integer',
+            ]);
 
-            // ✅ Manejo correcto del campo json
-            $data['rfc_proveedores'] = $request->has('rfc_proveedores')
-                ? json_encode(explode(',', $request['rfc_proveedores']))
-                : json_encode([]);
+            // Normaliza proveedores
+            $validated['rfc_proveedores'] = $this->normalizeRfcProveedores($request->input('rfc_proveedores', []));
 
-            $data['tipo_caracter'] = $request['tipo_caracter'];
-            $data['modalidad_permiso'] = $request['modalidad_permiso'];
-            $data['numero_permiso'] = $request['numero_permiso'];
-            $data['numero_contrato_asignacion'] = $request['numero_contrato_asignacion'];
-            $data['instalacion_almacen_gas'] = $request['instalacion_almacen_gas'];
-            $data['clave_instalacion'] = $request['clave_instalacion'];
-            $data['descripcion_instalacion'] = $request['descripcion_instalacion'];
-            $data['geolocalizacion_latitud'] = $request['geolocalizacion_latitud'];
-            $data['geolocalizacion_longitud'] = $request['geolocalizacion_longitud'];
-            $data['numero_pozos'] = $request['numero_pozos'];
-            $data['numero_tanques'] = $request['numero_tanques'];
-            $data['numero_ductos_entrada_salida'] = $request['numero_ductos_entrada_salida'];
-            $data['numero_ductos_transporte'] = $request['numero_ductos_transporte'];
-            $data['numero_dispensarios'] = $request['numero_dispensarios'];
+            // Crea registro (si tu modelo castea json->array, no uses json_encode)
+            $res = InformacionGeneralReporte::create($validated);
 
-            $res = InformacionGeneralReporte::create($data);
-            return response()->json($res, 200);
-
+            return response()->json($res, 201);
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
 
-
-
-    /**
-     * Display the specified resource.
-     */
     public function show(Request $request, $id)
     {
         try {
@@ -77,47 +101,47 @@ class InformacionGeneralReporteController extends Controller
         }
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, $id)
     {
         try {
-            $data['id_planta'] = $request['id_planta'];
-            $data['rfc_contribuyente'] = $request['rfc_contribuyente'];
-            $data['rfc_representante_legal'] = $request['rfc_representante_legal'];
-            $data['rfc_proveedor'] = $request['rfc_proveedor'];
-            $data['rfc_proveedores'] = explode(',', $request['rfc_proveedores']);
-            $data['tipo_caracter'] = $request['tipo_caracter'];
-            $data['modalidad_permiso'] = $request['modalidad_permiso'];
-            $data['numero_permiso'] = $request['numero_permiso'];
-            $data['numero_contrato_asignacion'] = $request['numero_contrato_asignacion'];
-            $data['instalacion_almacen_gas'] = $request['instalacion_almacen_gas'];
-            $data['clave_instalacion'] = $request['clave_instalacion'];
-            $data['descripcion_instalacion'] = $request['descripcion_instalacion'];
-            $data['geolocalizacion_latitud'] = $request['geolocalizacion_latitud'];
-            $data['geolocalizacion_longitud'] = $request['geolocalizacion_longitud'];
-            $data['numero_pozos'] = $request['numero_pozos'];
-            $data['numero_tanques'] = $request['numero_tanques'];
-            $data['numero_ductos_entrada_salida'] = $request['numero_ductos_entrada_salida'];
-            $data['numero_ductos_transporte'] = $request['numero_ductos_transporte'];
-            $data['numero_dispensarios'] = $request['numero_dispensarios'];
-
             $model = InformacionGeneralReporte::find($id);
             if (!$model) {
                 return response()->json(['error' => 'Resource not found.'], 404);
             }
 
-            $model->update($data);
+            $validated = $request->validate([
+                'id_planta' => 'sometimes|integer',
+                'rfc_contribuyente' => 'sometimes|string',
+                'rfc_representante_legal' => 'nullable|string',
+                'rfc_proveedor' => 'nullable|string',
+                'rfc_proveedores' => 'nullable',
+                'tipo_caracter' => 'nullable|string',
+                'modalidad_permiso' => 'nullable|string',
+                'numero_permiso' => 'nullable|string',
+                'numero_contrato_asignacion' => 'nullable|string',
+                'instalacion_almacen_gas' => 'nullable|string',
+                'clave_instalacion' => 'nullable|string',
+                'descripcion_instalacion' => 'nullable|string',
+                'geolocalizacion_latitud' => 'nullable|numeric',
+                'geolocalizacion_longitud' => 'nullable|numeric',
+                'numero_pozos' => 'nullable|integer',
+                'numero_tanques' => 'nullable|integer',
+                'numero_ductos_entrada_salida' => 'nullable|integer',
+                'numero_ductos_transporte' => 'nullable|integer',
+                'numero_dispensarios' => 'nullable|integer',
+            ]);
+
+            if ($request->has('rfc_proveedores')) {
+                $validated['rfc_proveedores'] = $this->normalizeRfcProveedores($request->input('rfc_proveedores'));
+            }
+
+            $model->update($validated);
             return response()->json($model, 200);
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Request $request, $id)
     {
         try {
@@ -125,7 +149,6 @@ class InformacionGeneralReporteController extends Controller
             if (!$model) {
                 return response()->json(['error' => 'Resource not found.'], 404);
             }
-            
             $res = $model->delete();
             return response()->json(["deleted" => $res], 200);
         } catch (\Throwable $th) {

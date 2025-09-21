@@ -191,5 +191,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}/{id}', 'show');
         Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
         Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');
+        Route::delete('/v1/eventoCfdiTanqueVirtual/{id}', 'destroy');
     });
 });

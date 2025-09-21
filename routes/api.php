@@ -87,14 +87,14 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
 
-    //Registro Información Generar del reporte
     Route::controller(InformacionGeneralReporteController::class)->group(function () {
-        Route::get('/v1/reporteVolumetrico/informacion-general/{idPlanta}', 'index');
+        Route::get('/v1/reporteVolumetrico/informacion-general/planta/{idPlanta}', 'index');
         Route::get('/v1/reporteVolumetrico/informacion-general/{id}', 'show');
-        Route::post('/v1/reporteVolumetrico/informacion-general', 'store');
-        Route::post('/v1/reporteVolumetrico/informacion-general/{id}', 'update');
+        Route::post('/v1/reporteVolumetrico/informacion-general', 'store');          // upsert por id_planta
+        Route::post('/v1/reporteVolumetrico/informacion-general/{id}', 'update');    // update por id
         Route::delete('/v1/reporteVolumetrico/informacion-general/{id}', 'destroy');
     });
+
 
     Route::controller(AlmacenController::class)->group(function () {
         Route::get('/v1/almacen/{idPlanta}', 'index');

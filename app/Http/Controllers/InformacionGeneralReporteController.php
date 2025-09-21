@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\InformacionGeneralReporte;
+use Illuminate\Support\Facades\Schema;
 
 class InformacionGeneralReporteController extends Controller
 {
@@ -17,72 +18,80 @@ class InformacionGeneralReporteController extends Controller
         }
     }
 
-    // --- Helper para normalizar rfc_proveedores ---
-    private function normalizeRfcProveedores($value): array
+    private function normalizeRfc(?string $r): ?string
     {
-        if (is_array($value)) {
-            return array_values(array_filter(
-                array_map(fn($v) => is_string($v) ? trim($v) : $v, $value),
-                fn($v) => !is_null($v) && $v !== ''
-            ));
-        }
-        if (is_string($value)) {
-            $value = trim($value);
-            if ($value === '') return [];
-            return array_values(array_filter(
-                array_map('trim', explode(',', $value)),
-                fn($v) => $v !== ''
-            ));
-        }
-        // también aceptamos JSON string
-        if (is_string($value) && $this->looksLikeJson($value)) {
-            $decoded = json_decode($value, true);
-            return is_array($decoded) ? $this->normalizeRfcProveedores($decoded) : [];
-        }
-        return [];
+        if ($r === null) return null;
+        $r = trim($r);
+        if ($r === '') return null;
+        // recorta a 13 (evita el error de PG “value too long for type character varying(13)”)
+        return mb_substr($r, 0, 13);
     }
 
-    private function looksLikeJson(string $s): bool
+    // --- Helper para normalizar rfc_proveedores ---
+    private function normalizePayload(Request $request): array
     {
-        $s = trim($s);
-        return (str_starts_with($s, '[') && str_ends_with($s, ']')) ||
-               (str_starts_with($s, '{') && str_ends_with($s, '}'));
+        // 1) Normalizar RFCs y numéricos
+        $payload = $request->all();
+
+        $payload['rfc_contribuyente'] = $this->normalizeRfc($payload['rfc_contribuyente'] ?? null);
+        $payload['rfc_representante_legal'] = $this->normalizeRfc($payload['rfc_representante_legal'] ?? null);
+        $payload['rfc_proveedor'] = $this->normalizeRfc($payload['rfc_proveedor'] ?? null);
+
+        // 2) rfc_proveedores puede venir como string "A,B" | array | json-string
+        $rp = $payload['rfc_proveedores'] ?? [];
+        if (is_string($rp)) {
+            $rp = trim($rp);
+            if ($rp === '') {
+                $rp = [];
+            } else {
+                // ¿string JSON?
+                if ((str_starts_with($rp, '[') && str_ends_with($rp, ']')) || (str_starts_with($rp, '{') && str_ends_with($rp, '}'))) {
+                    $dec = json_decode($rp, true);
+                    $rp = is_array($dec) ? $dec : array_map('trim', explode(',', $rp));
+                } else {
+                    $rp = array_map('trim', explode(',', $rp));
+                }
+            }
+        }
+        if (is_array($rp)) {
+            // normaliza cada RFC a 13 chars o descarta vacíos
+            $rp = array_values(array_filter(array_map(function ($v) {
+                if (!is_string($v)) return null;
+                $v = $this->normalizeRfc($v);
+                return $v ?: null;
+            }, $rp), fn($v) => $v !== null));
+        }
+        $payload['rfc_proveedores'] = $rp;
+
+        // 3) Filtra solo columnas válidas (ignora extras sin romper)
+        $cols = Schema::getColumnListing('informacion_general_reporte');
+        $payload = array_intersect_key($payload, array_flip($cols));
+
+        return $payload;
     }
+
 
     public function store(Request $request)
     {
         try {
-            // Validación mínima; ajusta a tus reglas reales
-            $validated = $request->validate([
-                'id_planta' => 'required|integer',
-                'rfc_contribuyente' => 'required|string',
-                'rfc_representante_legal' => 'nullable|string',
-                'rfc_proveedor' => 'nullable|string',
-                // puede llegar como string (coma) o como array
-                'rfc_proveedores' => 'nullable',
-                'tipo_caracter' => 'nullable|string',
-                'modalidad_permiso' => 'nullable|string',
-                'numero_permiso' => 'nullable|string',
-                'numero_contrato_asignacion' => 'nullable|string',
-                'instalacion_almacen_gas' => 'nullable|string',
-                'clave_instalacion' => 'nullable|string',
-                'descripcion_instalacion' => 'nullable|string',
-                'geolocalizacion_latitud' => 'nullable|numeric',
-                'geolocalizacion_longitud' => 'nullable|numeric',
-                'numero_pozos' => 'nullable|integer',
-                'numero_tanques' => 'nullable|integer',
-                'numero_ductos_entrada_salida' => 'nullable|integer',
-                'numero_ductos_transporte' => 'nullable|integer',
-                'numero_dispensarios' => 'nullable|integer',
-            ]);
+            // “Acepta lo que venga” (con normalización) y hace UPSERT por id_planta
+            $data = $this->normalizePayload($request);
 
-            // Normaliza proveedores
-            $validated['rfc_proveedores'] = $this->normalizeRfcProveedores($request->input('rfc_proveedores', []));
+            if (!isset($data['id_planta'])) {
+                return response()->json(['error' => 'id_planta requerido'], 422);
+            }
 
-            // Crea registro (si tu modelo castea json->array, no uses json_encode)
-            $res = InformacionGeneralReporte::create($validated);
+            // Si ya existe registro para la planta, actualiza; si no, crea
+            $model = InformacionGeneralReporte::where('id_planta', $data['id_planta'])->first();
+            if ($model) {
+                $model->forceFill($data)->save();
+            } else {
+                $model = new InformacionGeneralReporte();
+                $model->forceFill($data)->save();
+            }
 
-            return response()->json($res, 201);
+            $model->refresh();
+            return response()->json($model, $model->wasRecentlyCreated ? 201 : 200);
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
@@ -109,38 +118,21 @@ class InformacionGeneralReporteController extends Controller
                 return response()->json(['error' => 'Resource not found.'], 404);
             }
 
-            $validated = $request->validate([
-                'id_planta' => 'sometimes|integer',
-                'rfc_contribuyente' => 'sometimes|string',
-                'rfc_representante_legal' => 'nullable|string',
-                'rfc_proveedor' => 'nullable|string',
-                'rfc_proveedores' => 'nullable',
-                'tipo_caracter' => 'nullable|string',
-                'modalidad_permiso' => 'nullable|string',
-                'numero_permiso' => 'nullable|string',
-                'numero_contrato_asignacion' => 'nullable|string',
-                'instalacion_almacen_gas' => 'nullable|string',
-                'clave_instalacion' => 'nullable|string',
-                'descripcion_instalacion' => 'nullable|string',
-                'geolocalizacion_latitud' => 'nullable|numeric',
-                'geolocalizacion_longitud' => 'nullable|numeric',
-                'numero_pozos' => 'nullable|integer',
-                'numero_tanques' => 'nullable|integer',
-                'numero_ductos_entrada_salida' => 'nullable|integer',
-                'numero_ductos_transporte' => 'nullable|integer',
-                'numero_dispensarios' => 'nullable|integer',
-            ]);
+            // “Acepta lo que venga” (con normalización)
+            $data = $this->normalizePayload($request);
 
-            if ($request->has('rfc_proveedores')) {
-                $validated['rfc_proveedores'] = $this->normalizeRfcProveedores($request->input('rfc_proveedores'));
-            }
+            // Evita que cambien el id por accidente si viniera en el payload
+            unset($data['id']);
 
-            $model->update($validated);
+            $model->forceFill($data)->save();
+            $model->refresh();
+
             return response()->json($model, 200);
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
+
 
     public function destroy(Request $request, $id)
     {

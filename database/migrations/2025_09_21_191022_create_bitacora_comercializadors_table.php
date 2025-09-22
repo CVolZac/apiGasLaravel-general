@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('bitacora_transporte', function (Blueprint $table) {
+        Schema::create('bitacora_comercializador', function (Blueprint $table) {
             $table->id(); // servirá como NumeroRegistro
             $table->dateTime('FechaYHoraEvento'); 
             $table->unsignedBigInteger('TipoEvento'); 
@@ -19,6 +19,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('bitacora_transporte');
+        Schema::dropIfExists('bitacora_comercializador');
     }
 };

@@ -5,11 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class BitacoraTransporte extends Model
+class BitacoraComercializador extends Model
 {
     use HasFactory;
 
-    protected $table = 'bitacora_transporte';
+    protected $table = 'bitacora_comercializador';
 
     protected $fillable = [
         'FechaYHoraEvento',

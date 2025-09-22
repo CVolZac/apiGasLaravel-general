@@ -3,21 +3,21 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\BitacoraTransporte;
+use App\Models\BitacoraComercializador;
 
-class BitacoraTransporteController extends Controller
+class BitacoraComercializadorController extends Controller
 {
     // Listar todos
     public function index()
     {
-        $bitacoras = BitacoraTransporte::all();
+        $bitacoras = BitacoraComercializador::all();
         return response()->json(['Bitacora' => $bitacoras]);
     }
 
     // Obtener uno
     public function show($id)
     {
-        $registro = BitacoraTransporte::findOrFail($id);
+        $registro = BitacoraComercializador::findOrFail($id);
         return response()->json($registro);
     }
 
@@ -30,7 +30,7 @@ class BitacoraTransporteController extends Controller
             'DescripcionEvento' => 'required|string|max:500',
         ]);
 
-        $registro = BitacoraTransporte::create($request->all());
+        $registro = BitacoraComercializador::create($request->all());
 
         return response()->json([
             'message' => 'Registro creado correctamente',
@@ -41,7 +41,7 @@ class BitacoraTransporteController extends Controller
     // Actualizar
     public function update(Request $request, $id)
     {
-        $registro = BitacoraTransporte::findOrFail($id);
+        $registro = BitacoraComercializador::findOrFail($id);
 
         $request->validate([
             'FechaYHoraEvento' => 'required|date',
@@ -60,7 +60,7 @@ class BitacoraTransporteController extends Controller
     // Eliminar
     public function destroy($id)
     {
-        $registro = BitacoraTransporte::findOrFail($id);
+        $registro = BitacoraComercializador::findOrFail($id);
         $registro->delete();
 
         return response()->json(['message' => 'Registro eliminado']);

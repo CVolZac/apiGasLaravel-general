@@ -177,6 +177,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}/{id}', 'show');
         Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
         Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');
+        
     });
 
     // Bitácora Comercializador
@@ -184,6 +185,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/bitacoraComercializador/{idPlanta}', 'index');
         Route::get('/v1/bitacoraComercializador/{idPlanta}/{id}', 'show');
         Route::post('/v1/bitacoraComercializador', 'store');
+        Route::post('/v1/bitacoraComercializador/{id}', 'update');
+        Route::delete('/v1/bitacoraComercializador/{id}', 'destroy');
     });
 
     // Evento CFDI asociado a Tanque Virtual

@@ -11,12 +11,16 @@ class InformacionGeneralReporteController extends Controller
     public function index($idPlanta)
     {
         try {
-            $data = InformacionGeneralReporte::where('id_planta', $idPlanta)->get();
+            $data = InformacionGeneralReporte::where('id_planta', $idPlanta)
+                ->orderByDesc('updated_at')  // <- clave
+                ->get();
+
             return response()->json($data, 200);
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
+
 
     private function normalizeRfc(?string $r): ?string
     {
@@ -81,14 +85,17 @@ class InformacionGeneralReporteController extends Controller
                 return response()->json(['error' => 'id_planta requerido'], 422);
             }
 
-            // Si ya existe registro para la planta, actualiza; si no, crea
-            $model = InformacionGeneralReporte::where('id_planta', $data['id_planta'])->first();
+            $model = InformacionGeneralReporte::where('id_planta', $data['id_planta'])
+                ->orderByDesc('updated_at')
+                ->first();
+
             if ($model) {
                 $model->forceFill($data)->save();
             } else {
                 $model = new InformacionGeneralReporte();
                 $model->forceFill($data)->save();
             }
+
 
             $model->refresh();
             return response()->json($model, $model->wasRecentlyCreated ? 201 : 200);

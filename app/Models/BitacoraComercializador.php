@@ -2,20 +2,26 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class BitacoraComercializador extends Model
+class BitacoraTransporte extends Model
 {
-    protected $table = 'bitacora_comercializador';
+    use HasFactory;
+
+    protected $table = 'bitacora_transporte';
 
     protected $fillable = [
-        'entidad',
-        'entidad_id',
-        'accion',
-        'usuario_id',
-        'antes_json',
-        'despues_json',
-        'ip',
-        'user_agent',
+        'FechaYHoraEvento',
+        'TipoEvento',
+        'DescripcionEvento',
     ];
+
+    // Para exponer NumeroRegistro como alias de id
+    protected $appends = ['NumeroRegistro'];
+
+    public function getNumeroRegistroAttribute()
+    {
+        return $this->id;
+    }
 }

@@ -91,5 +91,21 @@ class DatabaseSeeder extends Seeder
                 'updated_at' => Carbon::now(),
             ],
         ]);
+
+        DB::table('comercializador_instalacion')->insert([
+            [
+                'rfc_contribuyente'        => 'XYZJ880326XXX',
+                'rfc_representante_legal'  => 'ABCD123456XXX',
+                'caracter'                 => 'permisionario',
+                'modalidad_permiso'        => 'ALM',
+                'num_permiso'              => 'PL/12345/ALM/2025',
+                'clave_instalacion'        => 'CMN-INS-0001',
+                'descripcion_instalacion'  => 'Instalación principal (patio 1)',
+                'geolat'                   => 22.7700000,
+                'geolng'                   => -102.5700000,
+                'created_at'               => Carbon::now(),
+                'updated_at'               => Carbon::now(),
+            ],
+        ]);
     }
 }

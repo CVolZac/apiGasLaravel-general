@@ -8,10 +8,12 @@ return new class extends Migration {
     public function up(): void {
         Schema::create('tanque_virtual', function (Blueprint $table) {
             $table->id();
+            /*
             $table->foreignId('instalacion_id')
                 ->constrained('comercializador_instalacion')
                 ->cascadeOnUpdate()
                 ->cascadeOnDelete();
+            */
 
             $table->string('clave_identificacion_tanque', 100)->index();
             $table->string('producto_clave', 20)->index();
@@ -33,7 +35,7 @@ return new class extends Migration {
 
             $table->timestamps();
 
-            $table->unique(['instalacion_id','clave_identificacion_tanque'], 'uniq_inst_tanque');
+            //$table->unique(['instalacion_id','clave_identificacion_tanque'], 'uniq_inst_tanque');
         });
     }
 

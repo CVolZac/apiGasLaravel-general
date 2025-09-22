@@ -2,40 +2,67 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BitacoraComercializador;
 use Illuminate\Http\Request;
+use App\Models\BitacoraTransporte;
 
-class BitacoraComercializadorController extends Controller
+class BitacoraTransporteController extends Controller
 {
-    public function index() {
-        return BitacoraComercializador::latest()->paginate(50);
+    // Listar todos
+    public function index()
+    {
+        $bitacoras = BitacoraTransporte::all();
+        return response()->json(['Bitacora' => $bitacoras]);
     }
 
-    public function store(Request $request) {
-        $data = $request->validate([
-            'entidad' => 'required|string|max:100',
-            'entidad_id' => 'required|integer',
-            'accion' => 'required|string|max:50',
-            'usuario_id' => 'nullable|integer',
-            'antes_json' => 'nullable|array',
-            'despues_json' => 'nullable|array',
-            'ip' => 'nullable|string|max:64',
-            'user_agent' => 'nullable|string|max:500',
+    // Obtener uno
+    public function show($id)
+    {
+        $registro = BitacoraTransporte::findOrFail($id);
+        return response()->json($registro);
+    }
+
+    // Crear nuevo
+    public function store(Request $request)
+    {
+        $request->validate([
+            'FechaYHoraEvento' => 'required|date',
+            'TipoEvento' => 'required|integer',
+            'DescripcionEvento' => 'required|string|max:500',
         ]);
 
-        // permite arrays → json
-        $data['antes_json'] = $data['antes_json'] ?? null;
-        $data['despues_json'] = $data['despues_json'] ?? null;
+        $registro = BitacoraTransporte::create($request->all());
 
-        return BitacoraComercializador::create($data);
+        return response()->json([
+            'message' => 'Registro creado correctamente',
+            'data' => $registro
+        ], 201);
     }
 
-    public function show(BitacoraComercializador $bitacoraComercializador) {
-        return $bitacoraComercializador;
+    // Actualizar
+    public function update(Request $request, $id)
+    {
+        $registro = BitacoraTransporte::findOrFail($id);
+
+        $request->validate([
+            'FechaYHoraEvento' => 'required|date',
+            'TipoEvento' => 'required|integer',
+            'DescripcionEvento' => 'required|string|max:500',
+        ]);
+
+        $registro->update($request->all());
+
+        return response()->json([
+            'message' => 'Registro actualizado correctamente',
+            'data' => $registro
+        ]);
     }
 
-    public function destroy(BitacoraComercializador $bitacoraComercializador) {
-        $bitacoraComercializador->delete();
-        return response()->noContent();
+    // Eliminar
+    public function destroy($id)
+    {
+        $registro = BitacoraTransporte::findOrFail($id);
+        $registro->delete();
+
+        return response()->json(['message' => 'Registro eliminado']);
     }
 }

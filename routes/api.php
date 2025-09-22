@@ -160,6 +160,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/tanqueVirtual/{idPlanta}/{id}', 'show');
         Route::post('/v1/tanqueVirtual', 'store');
         Route::post('/v1/tanqueVirtual/{id}', 'update');
+        Route::post('/v1/tanqueVirtual/{id}', 'destroy');
     });
 
     // Evento Tanque Virtual

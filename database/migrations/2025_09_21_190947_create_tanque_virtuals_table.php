@@ -8,18 +8,13 @@ return new class extends Migration {
     public function up(): void {
         Schema::create('tanque_virtual', function (Blueprint $table) {
             $table->id();
-            /*
-            $table->foreignId('instalacion_id')
-                ->constrained('comercializador_instalacion')
-                ->cascadeOnUpdate()
-                ->cascadeOnDelete();
-            */
 
+            // Identificadores
             $table->string('clave_identificacion_tanque', 100)->index();
             $table->string('producto_clave', 20)->index();
             $table->string('subproducto_clave', 20)->nullable()->index();
 
-            // Capacidades y parámetros operativos (m3 o litros según convención del sistema)
+            // Capacidades/parametría (opcionales en virtual)
             $table->decimal('cap_total', 18, 6)->nullable();
             $table->decimal('cap_operativa', 18, 6)->nullable();
             $table->decimal('cap_util', 18, 6)->nullable();
@@ -35,7 +30,8 @@ return new class extends Migration {
 
             $table->timestamps();
 
-            //$table->unique(['instalacion_id','clave_identificacion_tanque'], 'uniq_inst_tanque');
+            // Blindaje operativo para evitar duplicados de tanque por producto/subproducto
+            $table->unique(['producto_clave','subproducto_clave','clave_identificacion_tanque'], 'uniq_prod_subprod_tanque');
         });
     }
 

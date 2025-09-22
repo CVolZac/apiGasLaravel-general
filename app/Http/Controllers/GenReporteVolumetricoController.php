@@ -47,22 +47,16 @@ class GenReporteVolumetricoController extends Controller
         $almacenes    = Almacen::where('id_planta', $idPlanta)->get();
         $almacenesIds = $almacenes->pluck('id');
 
-        // Si fecha_inicio_evento es TIMESTAMP/DATE, este bloque está bien:
+        // Si fecha_inicio_evento es TIMESTAMP/DATE:
         $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
             ->whereYear('fecha_inicio_evento', $year)
             ->whereMonth('fecha_inicio_evento', $month)
             ->orderBy('fecha_inicio_evento')
             ->get();
 
-        // ----- Si fecha_inicio_evento FUERA varchar, usar este rango por mes (descomenta si lo necesitas):
-        // $iniMes = Carbon::create($year, $month, 1)->startOfMonth()->toDateTimeString();
-        // $finMes = Carbon::create($year, $month, 1)->endOfMonth()->toDateTimeString();
-        // $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-        //     ->whereRaw('"fecha_inicio_evento"::timestamp BETWEEN ? AND ?', [$iniMes, $finMes])
-        //     ->orderBy('fecha_inicio_evento')
-        //     ->get();
-
-        $caracter = $this->obtenerCaracter($dataGeneral);
+        // Carácter: buscamos en tipo_caracter_planta la modalidad ALM vigente para fin de mes
+        $fechaCorteMes = Carbon::create($year, $month, 1)->endOfMonth();
+        $caracter = $this->resolverCaracterDesdeTabla($dataGeneral, 'ALM', $fechaCorteMes);
 
         $totalRecepciones = $eventos->where('tipo_evento', 'entrada');
         $totalEntregas    = $eventos->where('tipo_evento', 'salida');
@@ -114,7 +108,7 @@ class GenReporteVolumetricoController extends Controller
             ];
         })->toArray();
 
-        // --- BITÁCORA mensual: rango de mes + cast seguro a timestamp
+        // Bitácora mensual (rango de mes)
         $inicioMes = Carbon::create($year, $month, 1)->startOfMonth();
         $finMes    = Carbon::create($year, $month, 1)->endOfMonth();
 
@@ -205,19 +199,9 @@ class GenReporteVolumetricoController extends Controller
             ->whereYear('fecha_inicio_evento', $year)
             ->whereMonth('fecha_inicio_evento', $month)
             ->pluck('fecha_inicio_evento')
-            ->map(fn ($f) => $this->fmtIso($f, 'Y-m-d'))
+            ->map(fn($f) => $this->fmtIso($f, 'Y-m-d'))
             ->unique()
             ->values();
-
-        // ----- Si fuera varchar, usar rango por mes (descomenta si aplica):
-        // $iniMes = Carbon::create($year, $month, 1)->startOfMonth()->toDateTimeString();
-        // $finMes = Carbon::create($year, $month, 1)->endOfMonth()->toDateTimeString();
-        // $fechasUnicas = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-        //     ->whereRaw('"fecha_inicio_evento"::timestamp BETWEEN ? AND ?', [$iniMes, $finMes])
-        //     ->pluck('fecha_inicio_evento')
-        //     ->map(fn($f) => $this->fmtIso($f, 'Y-m-d'))
-        //     ->unique()
-        //     ->values();
 
         if ($fechasUnicas->isEmpty()) {
             return [];
@@ -253,17 +237,10 @@ class GenReporteVolumetricoController extends Controller
             ->orderBy('fecha_inicio_evento')
             ->get();
 
-        // ----- Si fuera varchar, usar rango diario (descomenta si aplica):
-        // $ini = Carbon::parse($fecha)->startOfDay()->toDateTimeString();
-        // $fin = Carbon::parse($fecha)->endOfDay()->toDateTimeString();
-        // $eventos = EventoAlmacen::whereIn('id_almacen', $almacenesIds)
-        //     ->whereRaw('"fecha_inicio_evento"::timestamp BETWEEN ? AND ?', [$ini, $fin])
-        //     ->orderBy('fecha_inicio_evento')
-        //     ->get();
-
         $cfdis = Cfdi::whereIn('evento_id', $eventos->pluck('id'))->get()->groupBy('evento_id');
 
-        $caracter = $this->obtenerCaracter($dataGeneral);
+        // Carácter diario (ALM)
+        $caracter = $this->resolverCaracterDesdeTabla($dataGeneral, 'ALM', $fecha);
 
         $tanquesBase = $almacenes->map(function ($tanque) use ($eventos, $cfdis, $fecha) {
 
@@ -277,7 +254,6 @@ class GenReporteVolumetricoController extends Controller
             $recepcionesEventos = $eventosTanque->where('tipo_evento', 'entrada');
             $entregasEventos    = $eventosTanque->where('tipo_evento', 'salida');
 
-            // Última hora de recepción/entrega en el día (si aplica)
             $horaRecepcion = optional($recepcionesEventos->last())->fecha_fin_evento;
             $horaEntrega   = optional($entregasEventos->last())->fecha_fin_evento;
 
@@ -359,14 +335,9 @@ class GenReporteVolumetricoController extends Controller
             ];
         })->toArray();
 
-        // --- BITÁCORA diaria: compara por fecha con cast seguro (si fuera varchar)
+        // Bitácora diaria
         $bitacora = BitacoraEventos::where('id_planta', $idPlanta)
             ->whereRaw('DATE("FechaYHoraEvento"::timestamp) = ?', [$fecha])
-            // Alternativa por rango:
-            // ->whereRaw('"FechaYHoraEvento"::timestamp BETWEEN ? AND ?', [
-            //     Carbon::parse($fecha)->startOfDay()->toDateTimeString(),
-            //     Carbon::parse($fecha)->endOfDay()->toDateTimeString(),
-            // ])
             ->orderBy('FechaYHoraEvento')
             ->get()
             ->map(function ($registro, $index) {
@@ -409,8 +380,70 @@ class GenReporteVolumetricoController extends Controller
         ];
     }
 
+    /* ======================================================
+     *  RESOLVER CARÁCTER DESDE tipo_caracter_planta (NUEVO)
+     * ======================================================
+     *
+     * @param \App\Models\InformacionGeneralReporte $dataGeneral
+     * @param string $modalidadNecesaria  Ej. 'ALM', 'COM', 'DIS', 'TRN'
+     * @param \Carbon\Carbon|string|null $fechaRef
+     * @return array
+     */
+    private function resolverCaracterDesdeTabla($dataGeneral, string $modalidadNecesaria, $fechaRef = null): array
+    {
+        $ref  = $fechaRef ? ($fechaRef instanceof \Carbon\Carbon ? $fechaRef : \Carbon\Carbon::parse($fechaRef)) : \Carbon\Carbon::now();
+        $igrId = $dataGeneral->id;
+
+        // 1) Intento estricto: permisionario + modalidad solicitada (normalizando a mayúsculas)
+        $row = DB::table('tipo_caracter_planta')
+            ->where('informacion_general_reporte_id', $igrId)
+            ->whereRaw('LOWER(tipo_caracter) = ?', ['permisionario'])
+            // OJO: aquí usamos comillas DOBLES afuera para no romper el string
+            ->whereRaw("UPPER(COALESCE(modalidad_permiso, '')) = ?", [strtoupper($modalidadNecesaria)])
+            ->orderByDesc('id')
+            ->first();
+
+        // 2) Si no hay con esa modalidad, toma el más reciente (cualquiera)
+        if (!$row) {
+            $row = DB::table('tipo_caracter_planta')
+                ->where('informacion_general_reporte_id', $igrId)
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        if ($row) {
+            $tipo = strtolower($row->tipo_caracter ?? '');
+
+            if ($tipo === 'permisionario') {
+                return [
+                    'TipoCaracter'     => 'permisionario',
+                    'ModalidadPermiso' => $row->modalidad_permiso,          // ALM/COM/DIS/TRN
+                    'NumPermiso'       => $row->numero_permiso,
+                ];
+            }
+
+            if ($tipo === 'contratista' || $tipo === 'asignatario') {
+                return [
+                    'TipoCaracter'           => $tipo,
+                    'NumContratoOAsignacion' => $row->numero_contrato_asignacion,
+                ];
+            }
+
+            if ($tipo === 'usuario') {
+                return [
+                    'TipoCaracter'                 => 'usuario',
+                    'InstalacionAlmacenGasNatural' => $dataGeneral->instalacion_almacen_gas,
+                ];
+            }
+        }
+
+        // 3) Fallback al esquema legacy si no encontramos nada
+        return $this->obtenerCaracter($dataGeneral);
+    }
+
+
     /* =========================
-     *  CARACTER (sin cambios)
+     *  CARACTER (FALLBACK LEGACY)
      * =========================
      */
     private function obtenerCaracter($dataGeneral)

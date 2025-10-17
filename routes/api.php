@@ -26,7 +26,8 @@ use App\Http\Controllers\TanqueVirtualController;
 use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
-
+use App\Http\Controllers\ProductoController;
+use App\Http\Controllers\SubproductoController;
 use App\Http\Controllers\TipoCaracterPlantaController;
 
 
@@ -177,7 +178,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}/{id}', 'show');
         Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
         Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');
-        
     });
 
     // Bitácora Comercializador
@@ -196,5 +196,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
         Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');
         Route::delete('/v1/eventoCfdiTanqueVirtual/{id}', 'destroy');
+    });
+
+    // Productos
+    Route::controller(ProductoController::class)->group(function () {
+        Route::get('/v1/productos/{idPlanta}', 'index');
+        Route::get('/v1/productos/{idPlanta}/{id}', 'show');
+        Route::post('/v1/productos', 'store');
+        Route::post('/v1/productos/{id}', 'update');
+    });
+
+    // Subproductos
+    Route::controller(SubproductoController::class)->group(function () {
+        Route::get('/v1/subproductos/{idPlanta}', 'index');
+        Route::get('/v1/subproductos/{idPlanta}/{id}', 'show');
+        Route::post('/v1/subproductos', 'store');
+        Route::post('/v1/subproductos/{id}', 'update');
     });
 });

@@ -251,6 +251,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/bitacora-comercializacion', 'store');
     });
 
+    Route::controller(FlotaVirtualController::class)->group(function () {
+        Route::get('/v1/flota-virtual', 'index');
+        Route::get('/v1/flota-virtual/{id}', 'show');
+        Route::post('/v1/flota-virtual', 'store');
+        Route::post('/v1/flota-virtual/{id}', 'update');
+        Route::delete('/v1/flota-virtual/{id}', 'destroy');
+    });
+
 
 
     Route::prefix('v1')->group(function () {

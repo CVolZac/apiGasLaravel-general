@@ -4,54 +4,53 @@ namespace App\Http\Controllers;
 
 use App\Models\BitacoraComercializacion;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class BitacoraComercializacionController extends Controller
 {
-  // GET /v1/bitacora-comercializacion?entidad=&accion=&q=&desde=&hasta=
+  // GET /v1/bitacora-comercializacion?page=1
   public function index(Request $request)
   {
-    $entidad = $request->get('entidad');
-    $accion  = $request->get('accion');
-    $q       = $request->get('q');
-    $desde   = $request->get('desde');
-    $hasta   = $request->get('hasta');
+    $q = BitacoraComercializacion::orderBy('id','desc')->paginate(25);
+    return response()->json($q);
+  }
 
-    $query = BitacoraComercializacion::query();
-
-    if ($entidad) $query->where('entidad', $entidad);
-    if ($accion)  $query->where('accion',  $accion);
-
-    if ($q) {
-      $qLower = mb_strtolower($q, 'UTF-8');
-      $query->whereRaw('LOWER(descripcion) LIKE ?', ['%'.$qLower.'%']);
-    }
-
-    if ($desde) $query->whereDate('created_at', '>=', $desde);
-    if ($hasta) $query->whereDate('created_at', '<=', $hasta);
-
-    $data = $query->orderBy('id','desc')->paginate(25);
-    return response()->json($data);
+  // GET /v1/bitacora-comercializacion/{id}
+  public function show($id)
+  {
+    $item = BitacoraComercializacion::findOrFail($id);
+    return response()->json($item);
   }
 
   // POST /v1/bitacora-comercializacion
   public function store(Request $request)
   {
-    $validated = $request->validate([
-      'entidad'     => ['required','string','max:50', Rule::in(['contrato','contraparte','evento','reporte','complemento'])],
-      'entidad_id'  => ['nullable','integer'],
-      'accion'      => ['required','string','max:30', Rule::in(['create','update','delete','validate','generate','send','error'])],
-      'descripcion' => ['nullable','string','max:255'],
-      'payload'     => ['nullable','array'],
-      'usuario_id'  => ['nullable','integer'],
+    $data = $request->validate([
+      'fecha_hora_evento' => ['required','date'],
+      'tipo_evento'       => ['required','integer'],
+      'descripcion_evento'=> ['required','string','max:255'],
     ]);
+    $item = BitacoraComercializacion::create($data);
+    return response()->json($item, 201);
+  }
 
-    $b = BitacoraComercializacion::create($validated);
+  // POST /v1/bitacora-comercializacion/{id}
+  public function update($id, Request $request)
+  {
+    $item = BitacoraComercializacion::findOrFail($id);
+    $data = $request->validate([
+      'fecha_hora_evento' => ['required','date'],
+      'tipo_evento'       => ['required','integer'],
+      'descripcion_evento'=> ['required','string','max:255'],
+    ]);
+    $item->update($data);
+    return response()->json($item);
+  }
 
-    return response()->json([
-      'message' => 'Registro creado en bitácora de comercialización',
-      'id' => $b->id,
-      'data' => $b,
-    ], 201);
+  // DELETE /v1/bitacora-comercializacion/{id}
+  public function destroy($id)
+  {
+    $item = BitacoraComercializacion::findOrFail($id);
+    $item->delete();
+    return response()->json(['message'=>'Eliminado']);
   }
 }

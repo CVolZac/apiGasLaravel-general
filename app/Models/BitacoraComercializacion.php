@@ -9,10 +9,10 @@ class BitacoraComercializacion extends Model
   protected $table = 'bitacora_comercializacion';
 
   protected $fillable = [
-    'entidad','entidad_id','accion','descripcion','payload','usuario_id',
+    'fecha_hora_evento', 'tipo_evento', 'descripcion_evento'
   ];
 
   protected $casts = [
-    'payload' => 'array',
+    'fecha_hora_evento' => 'datetime',
   ];
 }

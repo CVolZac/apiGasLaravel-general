@@ -7,20 +7,14 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
   public function up(): void {
     Schema::create('bitacora_comercializacion', function (Blueprint $table) {
-      $table->id();
-      $table->string('entidad', 50);               // contrato | contraparte | evento | reporte | complemento
-      $table->unsignedBigInteger('entidad_id')->nullable();
-      $table->string('accion', 30);                // create | update | delete | validate | generate | send | error
-      $table->string('descripcion', 255)->nullable();
-      $table->json('payload')->nullable();         // snapshot (JSONB en Postgres)
-      $table->unsignedBigInteger('usuario_id')->nullable();
+      $table->id(); // <- será tu NumeroRegistro
+      $table->timestampTz('fecha_hora_evento');     // FechaYHoraEvento
+      $table->unsignedInteger('tipo_evento');       // TipoEvento (catálogo estático)
+      $table->string('descripcion_evento', 255);    // DescripcionEvento
       $table->timestamps();
-
-      $table->index(['entidad', 'accion']);
-      $table->index(['created_at']);
+      $table->index(['fecha_hora_evento','tipo_evento']);
     });
   }
-
   public function down(): void {
     Schema::dropIfExists('bitacora_comercializacion');
   }

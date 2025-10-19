@@ -26,6 +26,7 @@ use App\Http\Controllers\TanqueVirtualController;
 use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
+use App\Http\Controllers\BitacoraDispensarioController;
 use App\Http\Controllers\DispensarioController;
 use App\Http\Controllers\MangueraController;
 use App\Http\Controllers\MedidorDispensarioController;
@@ -247,6 +248,14 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('mangueras', 'store');                                              // crear
             Route::post('mangueras/{id}', 'update');                                        // actualizar
             Route::delete('mangueras/{id}', 'destroy');                                     // eliminar
+        });
+
+        Route::controller(BitacoraDispensarioController::class)->group(function () {
+            Route::get('bitacora-dispensario/{idPlanta}', 'indexByPlanta');         // listar por planta
+            Route::get('bitacora-dispensario/{idPlanta}/{id}', 'show');             // ver detalle
+            Route::post('bitacora-dispensario', 'store');                           // crear
+            Route::post('bitacora-dispensario/{id}', 'update');                     // actualizar (POST, tu patrón)
+            Route::delete('bitacora-dispensario/{id}', 'destroy');                  // eliminar
         });
     });
 });

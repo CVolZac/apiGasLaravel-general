@@ -36,6 +36,7 @@ use App\Http\Controllers\ContratoController as ControllersContratoController;
 use App\Http\Controllers\CortesExpendioController;
 use App\Http\Controllers\DispensarioController;
 use App\Http\Controllers\ExpendioPreviewController;
+use App\Http\Controllers\FlotaVirtualController;
 use App\Http\Controllers\GenReporteExpendioController;
 use App\Http\Controllers\MangueraController;
 use App\Http\Controllers\MedidorDispensarioController;

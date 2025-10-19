@@ -26,10 +26,14 @@ use App\Http\Controllers\TanqueVirtualController;
 use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
+use App\Http\Controllers\DispensarioController;
+use App\Http\Controllers\MangueraController;
+use App\Http\Controllers\MedidorDispensarioController;
 use App\Http\Controllers\ProductoController;
 use App\Http\Controllers\SubproductoController;
 use App\Http\Controllers\TipoCaracterPlantaController;
-
+use App\Models\Dispensario;
+use App\Models\MedidorDispensario;
 
 // Rutas publicas para acceder o registrar una cuenta
 Route::controller(LoginRegisterController::class)->group(function () {
@@ -212,5 +216,37 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/v1/subproductos/{idPlanta}/{id}', 'show');
         Route::post('/v1/subproductos', 'store');
         Route::post('/v1/subproductos/{id}', 'update');
+    });
+
+    Route::prefix('v1')->group(function () {
+
+        // ===== Dispensarios =====
+        Route::controller(DispensarioController::class)->group(function () {
+            Route::get('dispensarios/{idPlanta}', 'index');          // lista por planta
+            Route::get('dispensarios/{idPlanta}/{id}', 'show');      // ver uno por planta+id
+            Route::post('dispensarios', 'store');                    // crear
+            Route::post('dispensarios/{id}', 'update');              // actualizar (POST, tu patrón)
+            Route::delete('dispensarios/{id}', 'destroy');           // eliminar
+        });
+
+        // ===== Medidores (por dispensario) =====
+        // Nota: son medidores de dispensario; el filtro es por id_dispensario
+        Route::controller(MedidorDispensarioController::class)->group(function () {
+            Route::get('medidores/dispensario/{idDispensario}', 'indexByDispensario');      // lista por dispensario
+            Route::get('medidores/dispensario/{idDispensario}/{id}', 'show');               // ver uno
+            Route::post('medidores', 'store');                                              // crear
+            Route::post('medidores/{id}', 'update');                                        // actualizar
+            Route::delete('medidores/{id}', 'destroy');                                     // eliminar
+        });
+
+        // ===== Mangueras (por dispensario) =====
+        // Ojo: aquí corregimos el parámetro, debe ser idDispensario (antes tenías idMedidorDispensario)
+        Route::controller(MangueraController::class)->group(function () {
+            Route::get('mangueras/dispensario/{idDispensario}', 'indexByDispensario');      // lista por dispensario
+            Route::get('mangueras/dispensario/{idDispensario}/{id}', 'show');               // ver una
+            Route::post('mangueras', 'store');                                              // crear
+            Route::post('mangueras/{id}', 'update');                                        // actualizar
+            Route::delete('mangueras/{id}', 'destroy');                                     // eliminar
+        });
     });
 });

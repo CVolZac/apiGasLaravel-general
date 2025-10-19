@@ -47,6 +47,11 @@ class DatabaseSeeder extends Seeder
             'password' => 'esp8266butano'
         ]);
 
+        $this->call([
+            ProductosSeeder::class,
+            SubproductosSeeder::class,
+        ]);
+
 
 
         // 1. Insertar maestro

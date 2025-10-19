@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AjusteTotalizadorController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginRegisterController;
@@ -27,7 +28,9 @@ use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
 use App\Http\Controllers\BitacoraDispensarioController;
+use App\Http\Controllers\CortesExpendioController;
 use App\Http\Controllers\DispensarioController;
+use App\Http\Controllers\ExpendioPreviewController;
 use App\Http\Controllers\MangueraController;
 use App\Http\Controllers\MedidorDispensarioController;
 use App\Http\Controllers\ProductoController;
@@ -257,5 +260,21 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('bitacora-dispensario/{id}', 'update');                     // actualizar (POST, tu patrón)
             Route::delete('bitacora-dispensario/{id}', 'destroy');                  // eliminar
         });
+
+        // Cortes diarios (Eventos de expendio)
+        Route::get('cortes-expendio/{idPlanta}/{fecha}', [CortesExpendioController::class, 'indexByFecha']);
+        Route::post('cortes-expendio', [CortesExpendioController::class, 'store']);
+        Route::post('cortes-expendio/{id}', [CortesExpendioController::class, 'update']);  // sigues tu patrón POST
+        Route::delete('cortes-expendio/{id}', [CortesExpendioController::class, 'destroy']);
+
+        // Captura masiva
+        Route::get('cortes-expendio/masivo-base/{idPlanta}/{fecha}', [CortesExpendioController::class, 'masivoBase']);
+        Route::post('cortes-expendio/masivo', [CortesExpendioController::class, 'storeMasivo']);
+
+        // Ajustes de totalizador
+        Route::post('ajustes-totalizador', [AjusteTotalizadorController::class, 'store']);
+
+        // Previsualización JSON del bloque Expendio (diario)
+        Route::get('expendio/preview-json/{idPlanta}/{fecha}', [ExpendioPreviewController::class, 'previewJSON']);
     });
 });

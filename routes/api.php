@@ -31,6 +31,7 @@ use App\Http\Controllers\BitacoraDispensarioController;
 use App\Http\Controllers\CortesExpendioController;
 use App\Http\Controllers\DispensarioController;
 use App\Http\Controllers\ExpendioPreviewController;
+use App\Http\Controllers\GenReporteExpendioController;
 use App\Http\Controllers\MangueraController;
 use App\Http\Controllers\MedidorDispensarioController;
 use App\Http\Controllers\ProductoController;
@@ -276,5 +277,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Previsualización JSON del bloque Expendio (diario)
         Route::get('expendio/preview-json/{idPlanta}/{fecha}', [ExpendioPreviewController::class, 'previewJSON']);
+
+
+        Route::get('reporte-expendio/{idPlanta}/{yearMonth}/{tipoDM}', [GenReporteExpendioController::class, 'generarReporte'])
+            ->name('reporte.expendio.generar');
     });
 });

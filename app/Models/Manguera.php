@@ -12,6 +12,7 @@ class Manguera extends Model
         'id_dispensario',
         'identificador_manguera',
         'estado',
+        'id_subproducto'
     ];
 
     protected $casts = [
@@ -21,5 +22,10 @@ class Manguera extends Model
     public function dispensario()
     {
         return $this->belongsTo(Dispensario::class, 'id_dispensario');
+    }
+    
+    public function subproducto()
+    {
+        return $this->belongsTo(Subproducto::class, 'id_subproducto');
     }
 }

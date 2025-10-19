@@ -17,9 +17,12 @@ class EventoComercializacionController extends Controller
             $q = EventoComercializacion::query()
                 ->when($r->filled('tipo'), fn($x) => $x->where('tipo_evento', $r->tipo))
                 ->when($r->filled('producto'), fn($x) => $x->where('producto_clave', $r->producto))
-                ->when($r->filled('contenedor'), fn($x) => $x->where('flota_virtual_id', $r->contenedor))
-                ->when($r->filled('fecha_ini'), fn($x) => $x->whereDate('fecha_hora_inicio', '>=', $r->fecha_ini))
-                ->when($r->filled('fecha_fin'), fn($x) => $x->whereDate('fecha_hora_fin', '<=', $r->fecha_fin))
+                ->when($r->filled('contenedor'), fn($x) => $x->where('flota_virtual_id', (int)$r->contenedor))
+                ->when($r->filled('fecha_ini') && $r->filled('fecha_fin'), function ($x) use ($r) {
+                    $ini = date('Y-m-d', strtotime($r->fecha_ini));
+                    $fin = date('Y-m-d', strtotime($r->fecha_fin));
+                    return $x->whereBetween('fecha_hora_inicio', [$ini . ' 00:00:00', $fin . ' 23:59:59']);
+                })
                 ->orderBy('id', 'desc')
                 ->paginate(25);
 
@@ -32,6 +35,7 @@ class EventoComercializacionController extends Controller
             ], 500);
         }
     }
+
 
     // GET /v1/eventos-comercio/{id}
     public function show($id)

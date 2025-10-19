@@ -36,6 +36,7 @@ use App\Http\Controllers\ContratoController as ControllersContratoController;
 use App\Http\Controllers\CortesExpendioController;
 use App\Http\Controllers\DispensarioController;
 use App\Http\Controllers\EventoComercializacionController;
+use App\Http\Controllers\EventosComercializacionController;
 use App\Http\Controllers\ExpendioPreviewController;
 use App\Http\Controllers\FlotaVirtualController;
 use App\Http\Controllers\GenReporteExpendioController;
@@ -261,7 +262,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/v1/flota-virtual/{id}', 'destroy');
     });
 
-    Route::controller(EventoComercializacionController::class)->group(function () {
+    Route::controller(EventosComercializacionController::class)->group(function () {
         Route::get('/v1/eventos-comercio', 'index');
         Route::get('/v1/eventos-comercio/{id}', 'show');
         Route::post('/v1/eventos-comercio', 'store');

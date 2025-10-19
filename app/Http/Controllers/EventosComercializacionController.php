@@ -3,19 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\EventoComercializacion;
+use App\Models\EventosComercializacion;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 
 
-class EventoComercializacionController extends Controller
+class EventosComercializacionController extends Controller
 {
     // app/Http/Controllers/EventoComercializacionController.php
     public function index(Request $r)
     {
         try {
             // Solo pagina, sin filtros ni whereDate
-            $q = EventoComercializacion::orderBy('id', 'desc')->paginate(25);
+            $q = EventosComercializacion::orderBy('id', 'desc')->paginate(25);
             return response()->json($q);
         } catch (\Throwable $e) {
             Log::error('INDEX EVENTOS ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
@@ -30,7 +31,7 @@ class EventoComercializacionController extends Controller
     // GET /v1/eventos-comercio/{id}
     public function show($id)
     {
-        return response()->json(EventoComercializacion::findOrFail($id));
+        return response()->json(EventosComercializacion::findOrFail($id));
     }
 
     // POST /v1/eventos-comercio
@@ -65,14 +66,14 @@ class EventoComercializacionController extends Controller
         $base['temperatura']      = $base['temperatura'] ?? 20.000;
         $base['presion_absoluta'] = $base['presion_absoluta'] ?? 101.325;
 
-        $ev = EventoComercializacion::create($base);
+        $ev = EventosComercializacion::create($base);
         return response()->json($ev, 201);
     }
 
     // POST /v1/eventos-comercio/{id}
     public function update($id, Request $r)
     {
-        $ev = EventoComercializacion::findOrFail($id);
+        $ev = EventosComercializacion::findOrFail($id);
 
         $base = $r->validate([
             'flota_virtual_id'     => ['required', 'integer', 'exists:flota_virtual,id'],
@@ -109,7 +110,7 @@ class EventoComercializacionController extends Controller
     // DELETE /v1/eventos-comercio/{id}
     public function destroy($id)
     {
-        $ev = EventoComercializacion::findOrFail($id);
+        $ev = EventosComercializacion::findOrFail($id);
         $ev->delete();
         return response()->json(['message' => 'Eliminado']);
     }

@@ -11,6 +11,8 @@ use App\Http\Controllers\GenReporteVolumetricoController;
 use App\Http\Controllers\RolesUsuariosController;
 use App\Http\Controllers\PlantaGasController;
 use App\Http\Controllers\AlmacenController;
+use App\Http\Controllers\Api\ContraparteController;
+use App\Http\Controllers\Api\ContratoController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\BitacoraEventosController;
 use App\Http\Controllers\EventoAlmacenController;
@@ -222,6 +224,27 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/subproductos', 'store');
         Route::post('/v1/subproductos/{id}', 'update');
     });
+
+    // Contrapartes (Clientes / Proveedores)
+    Route::controller(ContraparteController::class)->group(function () {
+        Route::get('/v1/contrapartes', 'index');          // Listar o filtrar
+        Route::get('/v1/contrapartes/{id}', 'show');      // Mostrar detalle
+        Route::post('/v1/contrapartes', 'store');         // Crear nueva
+        Route::post('/v1/contrapartes/{id}', 'update');   // Actualizar existente
+    });
+
+
+    // Contratos asociados a las contrapartes
+    Route::controller(ContratoController::class)->group(function () {
+        Route::get('/v1/contratos', 'index');             // Listar / filtrar
+        Route::get('/v1/contratos/{id}', 'show');         // Mostrar detalle
+        Route::post('/v1/contratos', 'store');            // Crear nuevo
+        Route::post('/v1/contratos/{id}', 'update');      // Actualizar existente
+    });
+
+
+
+
 
     Route::prefix('v1')->group(function () {
 

@@ -13,9 +13,132 @@ use App\Models\TotalizadorMangueraDia;    // ✅ Reemplaza a CorteExpendio
 // use App\Models\AjusteTotalizadorManguera; // <- Opcional: si no existe el modelo, se maneja con class_exists
 use App\Models\BitacoraDispensario;
 use App\Models\Subproducto;
+use Illuminate\Support\Facades\Schema;
 
 class GenReporteExpendioController extends Controller
 {
+    /**
+     * Devuelve el nombre de la columna fecha/hora en bitácora de expendio.
+     * Intenta varios nombres comunes y regresa null si no encuentra ninguno.
+     */
+    private function bitacoraFechaCol(): ?string
+    {
+        $table = 'bitacora_dispensarios';
+        // Orden de preferencia (ajusta si usas otros nombres):
+        $candidatas = [
+            'fecha_hora_evento',
+            'FechaYHoraEvento',
+            'fecha_evento',
+            'fecha',
+            'fecha_hora', // por si el schema la tiene así
+        ];
+        foreach ($candidatas as $col) {
+            if (Schema::hasColumn($table, $col)) {
+                return $col;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Obtiene la bitácora del mes en rango [inicio, fin], ordenada por la columna real de fecha/hora.
+     * Regresa una Collection (posiblemente vacía).
+     */
+    private function bitacoraMensual(int $idPlanta, Carbon $inicio, Carbon $fin)
+    {
+        $col = $this->bitacoraFechaCol();
+        if (!$col) {
+            return collect(); // no hay columna de fecha -> devolvemos vacío para no romper
+        }
+
+        // Si la columna tiene mayúsculas o requiere casteo, usamos whereRaw. Postgres es sensible.
+        $builder = BitacoraDispensario::where('id_planta', $idPlanta);
+
+        if ($col === 'FechaYHoraEvento') {
+            return $builder
+                ->whereRaw('"FechaYHoraEvento"::timestamp BETWEEN ? AND ?', [
+                    $inicio->toDateTimeString(),
+                    $fin->toDateTimeString()
+                ])
+                ->orderBy('FechaYHoraEvento', 'asc')
+                ->get();
+        }
+
+        // Versión normal (snake_case)
+        return $builder
+            ->whereBetween($col, [$inicio->toDateTimeString(), $fin->toDateTimeString()])
+            ->orderBy($col, 'asc')
+            ->get();
+    }
+
+    /**
+     * Bitácora para un día exacto (igualdad por fecha).
+     */
+    private function bitacoraDiaria(int $idPlanta, string $fecha)
+    {
+        $col = $this->bitacoraFechaCol();
+        if (!$col) {
+            return collect();
+        }
+
+        $builder = BitacoraDispensario::where('id_planta', $idPlanta);
+
+        if ($col === 'FechaYHoraEvento') {
+            // Casting explícito a timestamp y comparación por DATE()
+            return $builder
+                ->whereRaw('DATE("FechaYHoraEvento"::timestamp) = ?', [$fecha])
+                ->orderBy('FechaYHoraEvento', 'asc')
+                ->get();
+        }
+
+        // Para columnas snake_case (timestamp / datetime) podemos usar whereDate
+        return $builder
+            ->whereDate($col, $fecha)
+            ->orderBy($col, 'asc')
+            ->get();
+    }
+
+    /**
+     * Mapea un registro de bitácora al formato de salida esperado,
+     * tolerando distintos nombres de campos en tu tabla.
+     */
+    private function mapBitacoraRow($registro, int $index): array
+    {
+        // Normaliza nombres de columnas: usa el que exista en tu tabla
+        $fecha = $registro->FechaYHoraEvento
+            ?? $registro->fecha_hora_evento
+            ?? $registro->fecha_evento
+            ?? $registro->fecha
+            ?? null;
+
+        $usuario = $registro->usuario_responsable
+            ?? $registro->UsuarioResponsable
+            ?? $registro->usuario
+            ?? null;
+
+        $tipo = $registro->tipo_evento
+            ?? $registro->TipoEvento
+            ?? null;
+
+        $desc = $registro->descripcion_evento
+            ?? $registro->DescripcionEvento
+            ?? null;
+
+        $alarma = $registro->identificacion_componente_alarma
+            ?? $registro->IdentificacionComponenteAlarma
+            ?? null;
+
+        return [
+            "NumeroRegistro"                 => $index + 1,
+            "FechaYHoraEvento"               => $fecha ? Carbon::parse($fecha)->format('Y-m-d\TH:i:sP') : null,
+            "UsuarioResponsable"             => $usuario,
+            "TipoEvento"                     => $tipo,
+            "DescripcionEvento"              => $desc,
+            "IdentificacionComponenteAlarma" => $alarma,
+        ];
+    }
+
+
     public function generarReporte($idPlanta, $yearMonth, $tipoDM)
     {
         date_default_timezone_set('America/Mexico_City');
@@ -113,20 +236,9 @@ class GenReporteExpendioController extends Controller
         $inicioMes = Carbon::create($year, $month, 1)->startOfMonth();
         $finMes    = Carbon::create($year, $month, 1)->endOfMonth();
 
-        $bitacora = BitacoraDispensario::where('id_planta', $igr->id_planta)
-            ->whereBetween('fecha_hora_evento', [$inicioMes, $finMes])
-            ->orderBy('fecha_hora_evento')
-            ->get()
-            ->map(function ($b, $i) {
-                return [
-                    "NumeroRegistro"                 => $i + 1,
-                    "FechaYHoraEvento"               => Carbon::parse($b->fecha_hora_evento)->format('Y-m-d\TH:i:sP'),
-                    "UsuarioResponsable"             => $b->usuario_responsable,
-                    "TipoEvento"                     => $b->tipo_evento,
-                    "DescripcionEvento"              => $b->descripcion_evento,
-                    "IdentificacionComponenteAlarma" => $b->identificacion_componente_alarma,
-                ];
-            })->values();
+        $bitacora = $this->bitacoraMensual($igr->id_planta, $inicioMes, $finMes)
+            ->map(fn($b, $i) => $this->mapBitacoraRow($b, $i))
+            ->values();
 
         // Salida mensual
         return response()->json([
@@ -233,20 +345,10 @@ class GenReporteExpendioController extends Controller
         }
 
         // Bitácora del día (expendio)
-        $bitacora = BitacoraDispensario::where('id_planta', $igr->id_planta)
-            ->whereDate('fecha_hora_evento', $fecha)
-            ->orderBy('fecha_hora_evento')
-            ->get()
-            ->map(function ($b, $i) {
-                return [
-                    "NumeroRegistro"                 => $i + 1,
-                    "FechaYHoraEvento"               => Carbon::parse($b->fecha_hora_evento)->format('Y-m-d\TH:i:sP'),
-                    "UsuarioResponsable"             => $b->usuario_responsable,
-                    "TipoEvento"                     => $b->tipo_evento,
-                    "DescripcionEvento"              => $b->descripcion_evento,
-                    "IdentificacionComponenteAlarma" => $b->identificacion_componente_alarma,
-                ];
-            })->values();
+        $bitacora = $this->bitacoraDiaria($igr->id_planta, $fecha)
+            ->map(fn($b, $i) => $this->mapBitacoraRow($b, $i))
+            ->values();
+
 
         // Salida diaria
         return [

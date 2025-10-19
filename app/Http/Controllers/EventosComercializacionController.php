@@ -10,22 +10,12 @@ use Illuminate\Support\Facades\Log;
 
 class EventoComercializacionController extends Controller
 {
-    // GET /v1/eventos-comercio?page=1&tipo=&producto=&contenedor=&fecha_ini=&fecha_fin=&q=
+    // app/Http/Controllers/EventoComercializacionController.php
     public function index(Request $r)
     {
         try {
-            $q = EventoComercializacion::query()
-                ->when($r->filled('tipo'), fn($x) => $x->where('tipo_evento', $r->tipo))
-                ->when($r->filled('producto'), fn($x) => $x->where('producto_clave', $r->producto))
-                ->when($r->filled('contenedor'), fn($x) => $x->where('flota_virtual_id', (int)$r->contenedor))
-                ->when($r->filled('fecha_ini') && $r->filled('fecha_fin'), function ($x) use ($r) {
-                    $ini = date('Y-m-d', strtotime($r->fecha_ini));
-                    $fin = date('Y-m-d', strtotime($r->fecha_fin));
-                    return $x->whereBetween('fecha_hora_inicio', [$ini . ' 00:00:00', $fin . ' 23:59:59']);
-                })
-                ->orderBy('id', 'desc')
-                ->paginate(25);
-
+            // Solo pagina, sin filtros ni whereDate
+            $q = EventoComercializacion::orderBy('id', 'desc')->paginate(25);
             return response()->json($q);
         } catch (\Throwable $e) {
             Log::error('INDEX EVENTOS ERROR: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);

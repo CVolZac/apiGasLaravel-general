@@ -30,6 +30,8 @@ use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
 use App\Http\Controllers\BitacoraDispensarioController;
+use App\Http\Controllers\ContraparteController as ControllersContraparteController;
+use App\Http\Controllers\ContratoController as ControllersContratoController;
 use App\Http\Controllers\CortesExpendioController;
 use App\Http\Controllers\DispensarioController;
 use App\Http\Controllers\ExpendioPreviewController;
@@ -225,23 +227,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/subproductos/{id}', 'update');
     });
 
-    // Contrapartes (Clientes / Proveedores)
-    Route::controller(ContraparteController::class)->group(function () {
-        Route::get('/v1/contrapartes', 'index');          // Listar o filtrar
-        Route::get('/v1/contrapartes/{id}', 'show');      // Mostrar detalle
-        Route::post('/v1/contrapartes', 'store');         // Crear nueva
-        Route::post('/v1/contrapartes/{id}', 'update');   // Actualizar existente
+    // Contrapartes
+    Route::controller(ControllersContraparteController::class)->group(function () {
+        Route::get('/v1/contrapartes', 'index');
+        Route::get('/v1/contrapartes/{id}', 'show');
+        Route::post('/v1/contrapartes', 'store');
+        Route::post('/v1/contrapartes/{id}', 'update');
+        Route::delete('/v1/contrapartes/{id}', 'destroy'); // si lo vas a usar
     });
 
-
-    // Contratos asociados a las contrapartes
-    Route::controller(ContratoController::class)->group(function () {
-        Route::get('/v1/contratos', 'index');             // Listar / filtrar
-        Route::get('/v1/contratos/{id}', 'show');         // Mostrar detalle
-        Route::post('/v1/contratos', 'store');            // Crear nuevo
-        Route::post('/v1/contratos/{id}', 'update');      // Actualizar existente
+    // Contratos
+    Route::controller(ControllersContratoController::class)->group(function () {
+        Route::get('/v1/contratos', 'index');
+        Route::get('/v1/contratos/{id}', 'show');
+        Route::post('/v1/contratos', 'store');
+        Route::post('/v1/contratos/{id}', 'update');
+        Route::delete('/v1/contratos/{id}', 'destroy'); // si lo vas a usar
     });
-
 
 
 

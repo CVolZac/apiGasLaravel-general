@@ -13,6 +13,7 @@ use App\Http\Controllers\PlantaGasController;
 use App\Http\Controllers\AlmacenController;
 use App\Http\Controllers\Api\ContraparteController;
 use App\Http\Controllers\Api\ContratoController;
+use App\Http\Controllers\BitacoraComercializacionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\BitacoraEventosController;
 use App\Http\Controllers\EventoAlmacenController;
@@ -245,6 +246,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/v1/contratos/{id}', 'destroy'); // si lo vas a usar
     });
 
+    Route::controller(BitacoraComercializacionController::class)->group(function () {
+        Route::get('/v1/bitacora-comercializacion', 'index');
+        Route::post('/v1/bitacora-comercializacion', 'store');
+    });
 
 
 

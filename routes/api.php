@@ -40,6 +40,7 @@ use App\Http\Controllers\EventosComercializacionController;
 use App\Http\Controllers\ExpendioPreviewController;
 use App\Http\Controllers\FlotaVirtualController;
 use App\Http\Controllers\GenReporteExpendioController;
+use App\Http\Controllers\GenReporteVolumetricoComController;
 use App\Http\Controllers\MangueraController;
 use App\Http\Controllers\MedidorDispensarioController;
 use App\Http\Controllers\ProductoController;
@@ -269,6 +270,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/eventos-comercio/{id}', 'update');
         Route::delete('/v1/eventos-comercio/{id}', 'destroy');
     });
+
+    Route::get('/v1/reporte-comercializacion/{idPlanta}/{yearMonth}/{tipoDM}', [GenReporteVolumetricoComController::class, 'generar'])
+        ->where(['yearMonth' => '\d{4}-\d{2}', 'tipoDM' => '[0-2]']);
 
     Route::prefix('v1')->group(function () {
 

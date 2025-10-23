@@ -15,11 +15,11 @@ class TipoCaracterPlantaController extends Controller
     }
 
     // Crea uno (enforce exclusión mutua)
-    public function store(Request $request, $infoGeneralId)
+    public function store(Request $request)
     {
-        $data = $this->validatePayload($request->all());
+        $infoGeneralId = $request->input('informacion_general_reporte_id');
 
-        // Reglas de exclusión mutua y nulificación
+        $data = $this->validatePayload($request->all());
         $data = $this->normalizeMutualExclusion($data);
 
         $row = TipoCaracterPlanta::updateOrCreate(
@@ -92,7 +92,7 @@ class TipoCaracterPlantaController extends Controller
     private function normalizeMutualExclusion(array $data): array
     {
         // Normalizar cadenas vacías a null
-        foreach (['tipo_caracter','modalidad_permiso','numero_permiso','numero_contrato_asignacion'] as $k) {
+        foreach (['tipo_caracter', 'modalidad_permiso', 'numero_permiso', 'numero_contrato_asignacion'] as $k) {
             if (array_key_exists($k, $data) && $data[$k] === '') {
                 $data[$k] = null;
             }

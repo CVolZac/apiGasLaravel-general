@@ -5,14 +5,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginRegisterController;
 use App\Http\Controllers\RegistroLlenadoAlmacenController;
-//use App\Http\Controllers\ReporteVolumetrico;
 use App\Http\Controllers\InformacionGeneralReporteController;
 use App\Http\Controllers\GenReporteVolumetricoController;
 use App\Http\Controllers\RolesUsuariosController;
 use App\Http\Controllers\PlantaGasController;
 use App\Http\Controllers\AlmacenController;
-use App\Http\Controllers\Api\ContraparteController;
-use App\Http\Controllers\Api\ContratoController;
 use App\Http\Controllers\BitacoraComercializacionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\BitacoraEventosController;
@@ -209,11 +206,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Evento CFDI asociado a Tanque Virtual
     Route::controller(TipoCaracterPlantaController::class)->group(function () {
-        Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}', 'indexPorInfoGeneral');
-        Route::get('/v1/eventoCfdiTanqueVirtual/{idPlanta}/{id}', 'show');
-        Route::post('/v1/eventoCfdiTanqueVirtual', 'store');
-        Route::post('/v1/eventoCfdiTanqueVirtual/{id}', 'update');
-        Route::delete('/v1/eventoCfdiTanqueVirtual/{id}', 'destroy');
+        Route::get('/v1/tipo-caracter/{idPlanta}', 'indexPorInfoGeneral');
+        Route::get('/v1/tipo-caracter/{idPlanta}/{id}', 'show');
+        Route::post('/v1/tipo-caracter', 'store');
+        Route::post('/v1/tipo-caracter/{id}', 'update');
+        Route::delete('/v1/tipo-caracter/{id}', 'destroy');
     });
 
     // Productos

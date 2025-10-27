@@ -72,7 +72,7 @@ class GenReporteVolumetricoController extends Controller
             ->get()
             ->map(function ($cfdi) {
                 return [
-                    "UUID"               => $cfdi->UUID,
+                    "UUID"               => $cfdi->uuid,
                     "Fecha"              => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d\TH:i:s'),
                     "Proveedor"          => $cfdi->NombreEmisorCFDI,
                     "VolumenRelacionado" => (float) $cfdi->MontoTotalOperacion,
@@ -84,7 +84,7 @@ class GenReporteVolumetricoController extends Controller
             ->get()
             ->map(function ($cfdi) {
                 return [
-                    "UUID"               => $cfdi->UUID,
+                    "UUID"               => $cfdi->uuid,
                     "Fecha"              => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d\TH:i:s'),
                     "Cliente"            => $cfdi->NombreEmisorCFDI,
                     "VolumenRelacionado" => (float) $cfdi->MontoTotalOperacion,
@@ -282,13 +282,13 @@ class GenReporteVolumetricoController extends Controller
                     "Complemento" => collect($cfdis->get($evento->id))->map(function ($cfdi) {
                         return [
                             "TipoComplemento"       => "CFDI",
-                            "Version"               => $cfdi->Version,
-                            "UUID"                  => $cfdi->UUID,
-                            "RFCEmisorCFDI"         => $cfdi->RFCEmisorCFDI,
-                            "NombreEmisorCFDI"      => $cfdi->NombreEmisorCFDI,
-                            "RFCProveedorReceptor"  => $cfdi->RFCProveedorReceptor,
-                            "MontoTotalOperacion"   => (float) $cfdi->MontoTotalOperacion,
-                            "FechaCFDI"             => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d'),
+                            "Version"               => $cfdi->version,
+                            "UUID"                  => $cfdi->uuid,
+                            "RFCEmisorCFDI"         => $cfdi->rfc_emisor,
+                            "NombreEmisorCFDI"      => $cfdi->nombre_emisor,
+                            "RFCProveedorReceptor"  => $cfdi->rfc_receptor,
+                            "MontoTotalOperacion"   => (float) $cfdi->monto_total,
+                            "FechaCFDI"             => $this->fmtIso($cfdi->fecha_hora, 'Y-m-d'),
                         ];
                     })->values(),
                 ];
@@ -305,13 +305,13 @@ class GenReporteVolumetricoController extends Controller
                     "Complemento" => collect($cfdis->get($evento->id))->map(function ($cfdi) {
                         return [
                             "TipoComplemento"       => "CFDI",
-                            "Version"               => $cfdi->Version,
-                            "UUID"                  => $cfdi->UUID,
-                            "RFCEmisorCFDI"         => $cfdi->RFCEmisorCFDI,
-                            "NombreEmisorCFDI"      => $cfdi->NombreEmisorCFDI,
-                            "RFCProveedorReceptor"  => $cfdi->RFCProveedorReceptor,
-                            "MontoTotalOperacion"   => (float) $cfdi->MontoTotalOperacion,
-                            "FechaCFDI"             => $this->fmtIso($cfdi->FechaCFDI, 'Y-m-d'),
+                            "Version"               => $cfdi->version,
+                            "UUID"                  => $cfdi->uuid,
+                            "RFCEmisorCFDI"         => $cfdi->rfc_emisor,
+                            "NombreEmisorCFDI"      => $cfdi->nombre_emisor,
+                            "RFCProveedorReceptor"  => $cfdi->rfc_receptor,
+                            "MontoTotalOperacion"   => (float) $cfdi->monto_total,
+                            "FechaCFDI"             => $this->fmtIso($cfdi->fecha_hora, 'Y-m-d'),
                         ];
                     })->values(),
                 ];

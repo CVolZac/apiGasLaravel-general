@@ -28,6 +28,7 @@ use App\Http\Controllers\EventoTanqueVirtualController;
 use App\Http\Controllers\EventoCfdiTanqueVirutalController;
 use App\Http\Controllers\BitacoraComercializadorController;
 use App\Http\Controllers\BitacoraDispensarioController;
+use App\Http\Controllers\CfdisComercializadoresController;
 use App\Http\Controllers\ContraparteController as ControllersContraparteController;
 use App\Http\Controllers\ContratoController as ControllersContratoController;
 use App\Http\Controllers\CortesExpendioController;
@@ -40,7 +41,9 @@ use App\Http\Controllers\GenReporteExpendioController;
 use App\Http\Controllers\GenReporteVolumetricoComController;
 use App\Http\Controllers\MangueraController;
 use App\Http\Controllers\MedidorDispensarioController;
+use App\Http\Controllers\PedimentosComercializadoresController;
 use App\Http\Controllers\ProductoController;
+use App\Http\Controllers\ServiciosComercializadoresController;
 use App\Http\Controllers\SubproductoController;
 use App\Http\Controllers\TipoCaracterPlantaController;
 use App\Models\Dispensario;
@@ -266,6 +269,30 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/v1/eventos-comercio', 'store');
         Route::post('/v1/eventos-comercio/{id}', 'update');
         Route::delete('/v1/eventos-comercio/{id}', 'destroy');
+    });
+
+    Route::controller(CfdisComercializadoresController::class)->group(function () {
+        Route::get('/v1/cfdis-comercializadores', 'index');                 // ?evento_id=123 opcional
+        Route::get('/v1/cfdis-comercializadores/{id}', 'show');
+        Route::post('/v1/cfdis-comercializadores', 'store');
+        Route::post('/v1/cfdis-comercializadores/{id}', 'update');
+        Route::delete('/v1/cfdis-comercializadores/{id}', 'destroy');
+    });
+
+    Route::controller(PedimentosComercializadoresController::class)->group(function () {
+        Route::get('/v1/pedimentos-comercializadores', 'index');            // ?evento_id=123 opcional
+        Route::get('/v1/pedimentos-comercializadores/{id}', 'show');
+        Route::post('/v1/pedimentos-comercializadores', 'store');
+        Route::post('/v1/pedimentos-comercializadores/{id}', 'update');
+        Route::delete('/v1/pedimentos-comercializadores/{id}', 'destroy');
+    });
+
+    Route::controller(ServiciosComercializadoresController::class)->group(function () {
+        Route::get('/v1/servicios-comercializadores', 'index');             // ?evento_id=123 opcional
+        Route::get('/v1/servicios-comercializadores/{id}', 'show');
+        Route::post('/v1/servicios-comercializadores', 'store');
+        Route::post('/v1/servicios-comercializadores/{id}', 'update');
+        Route::delete('/v1/servicios-comercializadores/{id}', 'destroy');
     });
 
     Route::get('/v1/reporte-comercializacion/{idPlanta}/{yearMonth}/{tipoDM}', [GenReporteVolumetricoComController::class, 'generar'])

@@ -576,7 +576,7 @@ class GenReporteVolumetricoComController extends Controller
         $colMedio   = $this->pickColumn($table, ['medio_trans_entra_sale_aduana', 'medio_trans_aduana']);
         $colPed     = $this->pickColumn($table, ['pedimento_aduanal', 'pedimento']);
         $colIncot   = $this->pickColumn($table, ['incoterms']);
-        $colPrecio  = $this->pickColumn($table, ['precio_import_export']); // si usas otro nombre, agrégalo aquí
+        $colPrecio  = $this->pickColumn($table, ['precio_import_export']);
         $colVolVal  = $this->pickColumn($table, ['volumen_doc_valor', 'volumen_documentado_valor']);
         $colVolUM   = $this->pickColumn($table, ['volumen_doc_um', 'volumen_documentado_um']);
 

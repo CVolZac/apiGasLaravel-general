@@ -12,6 +12,7 @@ class Dispensario extends Model
         'id_planta',
         'clave_dispensario',
         'descripcion',
+        'numero_permiso_textual', // <-- agregado
     ];
 
     protected $casts = [
@@ -28,3 +29,4 @@ class Dispensario extends Model
         return $this->hasMany(MedidorDispensario::class, 'id_dispensario');
     }
 }
+

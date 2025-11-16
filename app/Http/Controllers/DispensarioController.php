@@ -29,12 +29,17 @@ class DispensarioController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'id_planta' => ['required','integer'],
+            'id_planta' => ['required', 'integer'],
             'clave_dispensario' => [
-                'required','string','max:50',
-                Rule::unique('dispensarios')->where(fn($q)=>$q->where('id_planta', $request->id_planta))
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('dispensarios')->where(fn($q) => $q->where('id_planta', $request->id_planta))
             ],
-            'descripcion' => ['nullable','string','max:255'],
+            'descripcion' => ['nullable', 'string', 'max:255'],
+
+            // 🔥 Nuevo campo
+            'numero_permiso_textual' => ['nullable', 'string', 'max:100'],
         ]);
 
         $disp = Dispensario::create($validated);
@@ -52,12 +57,18 @@ class DispensarioController extends Controller
         $disp = Dispensario::findOrFail($id);
 
         $validated = $request->validate([
-            'id_planta' => ['required','integer'],
+            'id_planta' => ['required', 'integer'],
             'clave_dispensario' => [
-                'required','string','max:50',
-                Rule::unique('dispensarios')->ignore($disp->id)->where(fn($q)=>$q->where('id_planta', $request->id_planta))
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('dispensarios')
+                    ->ignore($disp->id)
+                    ->where(fn($q) => $q->where('id_planta', $request->id_planta))
             ],
-            'descripcion' => ['nullable','string','max:255'],
+            'descripcion' => ['nullable', 'string', 'max:255'],
+
+            'numero_permiso_textual' => ['nullable', 'string', 'max:100'],
         ]);
 
         $disp->update($validated);

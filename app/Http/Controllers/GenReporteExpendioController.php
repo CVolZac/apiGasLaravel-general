@@ -139,7 +139,7 @@ class GenReporteExpendioController extends Controller
     }
 
 
-    public function generarReporte($idPlanta, $yearMonth, $tipoDM)
+    public function generarReporte($idPlanta, $yearMonth, $tipoDM, $claveDisp)
     {
         date_default_timezone_set('America/Mexico_City');
 
@@ -149,15 +149,15 @@ class GenReporteExpendioController extends Controller
 
         if ($tipoDM == 0) {
             // Mensual del mes indicado
-            return $this->generarReporteMensualExpendio($idPlanta, $year, $month);
+            return $this->generarReporteMensualExpendio($idPlanta, $year, $month, $claveDisp);
         } elseif ($tipoDM == 1) {
             // Todos los diarios del mes indicado
-            return $this->generarReportesDiariosPorMes($idPlanta, $year, $month);
+            return $this->generarReportesDiariosPorMes($idPlanta, $year, $month, $claveDisp);
         } else {
             // Paquete: mensual + diarios del mes
             return response()->json([
-                "MENSUALES" => $this->generarReporteMensualExpendio($idPlanta, $year, $month)->getData(true),
-                "DIARIOS"   => $this->generarReportesDiariosPorMes($idPlanta, $year, $month)
+                "MENSUALES" => $this->generarReporteMensualExpendio($idPlanta, $year, $month, $claveDisp)->getData(true),
+                "DIARIOS"   => $this->generarReportesDiariosPorMes($idPlanta, $year, $month, $claveDisp)
             ]);
         }
     }
@@ -166,11 +166,16 @@ class GenReporteExpendioController extends Controller
      *  REPORTE MENSUAL (EXPENDIO)
      * ============================
      */
-    private function generarReporteMensualExpendio($idPlanta, $year, $month)
+    private function generarReporteMensualExpendio($idPlanta, $year, $month, $claveDisp)
     {
         $igr = InformacionGeneralReporte::where('id_planta', $idPlanta)->firstOrFail();
 
-        $dispensarios   = Dispensario::where('id_planta', $idPlanta)->get();
+        $dispensarios   = Dispensario::where('id_planta', $idPlanta)->when(
+            $claveDisp !== 'TODOS',
+            fn($q) =>
+            $q->where('clave_dispensario', $claveDisp)
+        )
+            ->get();
         $dispIds        = $dispensarios->pluck('id');
         $mangueras      = Manguera::whereIn('id_dispensario', $dispIds)->get();
         $mangueraIds    = $mangueras->pluck('id');
@@ -265,9 +270,16 @@ class GenReporteExpendioController extends Controller
      *  DIARIOS DEL MES (EXPENDIO)
      * ==================================
      */
-    private function generarReportesDiariosPorMes($idPlanta, $year, $month)
+    private function generarReportesDiariosPorMes($idPlanta, $year, $month, $claveDisp)
     {
-        $dispensarios = Dispensario::where('id_planta', $idPlanta)->get();
+        $dispensarios = Dispensario::where('id_planta', $idPlanta)
+            ->when(
+                $claveDisp !== 'TODOS',
+                fn($q) =>
+                $q->where('clave_dispensario', $claveDisp)
+            )
+            ->get();
+
         $mangueras    = Manguera::whereIn('id_dispensario', $dispensarios->pluck('id'))->get();
 
         $fechasUnicas = TotalizadorMangueraDia::whereIn('id_manguera', $mangueras->pluck('id'))
@@ -284,7 +296,7 @@ class GenReporteExpendioController extends Controller
 
         $reportes = [];
         foreach ($fechasUnicas as $fecha) {
-            $reporte = $this->generarReporteDiarioPorFecha($idPlanta, $fecha);
+            $reporte = $this->generarReporteDiarioPorFecha($idPlanta, $fecha, $claveDisp);
             $reportes[] = ["Fecha" => $fecha, "REPORTE" => $reporte];
         }
         return $reportes;
@@ -294,13 +306,20 @@ class GenReporteExpendioController extends Controller
      *  REPORTE DIARIO (EXPENDIO)
      * ============================
      */
-    private function generarReporteDiarioPorFecha($idPlanta, $fecha)
+    private function generarReporteDiarioPorFecha($idPlanta, $fecha, $claveDisp)
     {
         if (empty($fecha)) abort(400, 'La fecha es obligatoria');
 
         $igr = InformacionGeneralReporte::where('id_planta', $idPlanta)->firstOrFail();
 
-        $dispensarios = Dispensario::where('id_planta', $idPlanta)->get();
+        $dispensarios = Dispensario::where('id_planta', $idPlanta)
+            ->when(
+                $claveDisp !== 'TODOS',
+                fn($q) =>
+                $q->where('clave_dispensario', $claveDisp)
+            )
+            ->get();
+
         $mangueras    = Manguera::whereIn('id_dispensario', $dispensarios->pluck('id'))->get()->keyBy('id');
 
         $caracter = $this->resolverCaracterDesdeTabla($igr, 'DIS', $fecha);

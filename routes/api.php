@@ -354,7 +354,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('expendio/preview-json/{idPlanta}/{fecha}', [ExpendioPreviewController::class, 'previewJSON']);
 
 
-        Route::get('reporte-expendio/{idPlanta}/{yearMonth}/{tipoDM}', [GenReporteExpendioController::class, 'generarReporte'])
+        Route::get('reporte-expendio/{idPlanta}/{yearMonth}/{tipoDM}/{claveDispensario}', [GenReporteExpendioController::class, 'generarReporte'])
             ->name('reporte.expendio.generar');
     });
 });

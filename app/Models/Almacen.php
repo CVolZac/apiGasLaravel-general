@@ -12,7 +12,13 @@ class Almacen extends Model
     protected $table = 'almacen';
 
     protected $fillable = [
+
+        // Comunes
         'id_planta',
+        'tipo_tanque',
+        'estado_tanque',
+
+        // Campos PLANTA
         'clave_almacen',
         'localizacion_descripcion_almacen',
         'vigencia_calibracion_tanque',
@@ -21,14 +27,20 @@ class Almacen extends Model
         'capacidad_util',
         'capacidad_fondaje',
         'volumen_minimo_operacion',
-        'estado_tanque'
+
+        // Campos AUTOTANQUE
+        'numero_economico',
+        'placas',
+        'permiso_cre',
+        'descripcion_tanque'
     ];
 
+    // Relaciones existentes
     public function registrosEntradasSalidasAlmacen()
     {
         return $this->hasMany(RegistroLlenadoAlmacen::class, 'id_almacen', 'id');
     }
-    
+
     public function registrosEventos()
     {
         return $this->hasMany(EventoAlmacen::class, 'id_almacen', 'id');

@@ -8,7 +8,7 @@ use App\Models\Almacen;
 class AlmacenController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * GET todos los tanques de la planta.
      */
     public function index($idPlanta)
     {
@@ -21,69 +21,114 @@ class AlmacenController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Crear tanque (planta o autotanque)
      */
     public function store(Request $request)
     {
         try {
-            $data["id_planta"] = $request["id_planta"];
-            $data["clave_almacen"] = $request["clave_almacen"];
-            $data["localizacion_descripcion_almacen"] = $request["localizacion_descripcion_almacen"];
-            $data["vigencia_calibracion_tanque"] = $request["vigencia_calibracion_tanque"];
-            $data["capacidad_almacen"] = $request["capacidad_almacen"];
-            $data["capacidad_operativa"] = $request["capacidad_operativa"];
-            $data["capacidad_util"] = $request["capacidad_util"];
-            $data["capacidad_fondaje"] = $request["capacidad_fondaje"];
-            $data["volumen_minimo_operacion"] = $request["volumen_minimo_operacion"];
-            $data["estado_tanque"] = $request["estado_tanque"];
+
+            // ------ VALIDACIONES POR TIPO ------
+            $tipo = $request->input('tipo_tanque', 'planta');
+
+            if ($tipo === 'planta') {
+
+                $data = $request->validate([
+                    'id_planta' => 'required|integer',
+                    'tipo_tanque' => 'required|in:planta,autotanque',
+                    'clave_almacen' => 'required|string',
+                    'localizacion_descripcion_almacen' => 'required|string',
+                    'vigencia_calibracion_tanque' => 'required|string',
+                    'capacidad_almacen' => 'required|integer',
+                    'capacidad_operativa' => 'required|integer',
+                    'capacidad_util' => 'required|integer',
+                    'capacidad_fondaje' => 'required|integer',
+                    'volumen_minimo_operacion' => 'required|integer',
+                    'estado_tanque' => 'required|string'
+                ]);
+
+            } else { // AUTOTANQUE
+
+                $data = $request->validate([
+                    'id_planta' => 'required|integer',
+                    'tipo_tanque' => 'required|in:planta,autotanque',
+                    'numero_economico' => 'required|string',
+                    'placas' => 'required|string',
+                    'permiso_cre' => 'nullable|string',
+                    'descripcion_tanque' => 'nullable|string',
+                    'capacidad_util' => 'required|integer',
+                    'estado_tanque' => 'required|string'
+                ]);
+            }
 
             $res = Almacen::create($data);
             return response()->json($res, 200);
+
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
-        
     }
 
+
     /**
-     * Display the specified resource.
+     * Ver un tanque
      */
     public function show(Request $request, Almacen $almacen)
     {
         try {
             $data = Almacen::find($request->id);
-            return  response()->json($data);
+            return response()->json($data);
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
 
+
     /**
-     * Update the specified resource in storage.
+     * Editar tanque
      */
     public function update(Request $request, Almacen $almacen)
     {
         try {
-            $data["clave_almacen"] = $request["clave_almacen"];
-            $data["localizacion_descripcion_almacen"] = $request["localizacion_descripcion_almacen"];
-            $data["vigencia_calibracion_tanque"] = $request["vigencia_calibracion_tanque"];
-            $data["capacidad_almacen"] = $request["capacidad_almacen"];
-            $data["capacidad_operativa"] = $request["capacidad_operativa"];
-            $data["capacidad_util"] = $request["capacidad_util"];
-            $data["capacidad_fondaje"] = $request["capacidad_fondaje"];
-            $data["volumen_minimo_operacion"] = $request["volumen_minimo_operacion"];
-            $data["estado_tanque"] = $request["estado_tanque"];
+
+            $tipo = $request->input('tipo_tanque', 'planta');
+
+            if ($tipo === 'planta') {
+                $data = $request->validate([
+                    'clave_almacen' => 'required|string',
+                    'localizacion_descripcion_almacen' => 'required|string',
+                    'vigencia_calibracion_tanque' => 'required|string',
+                    'capacidad_almacen' => 'required|integer',
+                    'capacidad_operativa' => 'required|integer',
+                    'capacidad_util' => 'required|integer',
+                    'capacidad_fondaje' => 'required|integer',
+                    'volumen_minimo_operacion' => 'required|integer',
+                    'estado_tanque' => 'required|string'
+                ]);
+
+            } else { // AUTOTANQUE
+
+                $data = $request->validate([
+                    'numero_economico' => 'required|string',
+                    'placas' => 'required|string',
+                    'permiso_cre' => 'nullable|string',
+                    'descripcion_tanque' => 'nullable|string',
+                    'capacidad_util' => 'required|integer',
+                    'estado_tanque' => 'required|string'
+                ]);
+            }
 
             Almacen::find($request->id)->update($data);
             $res = Almacen::find($request->id);
-            return  response()->json($res, 200);
+            return response()->json($res, 200);
+
         } catch (\Throwable $th) {
             return response()->json(['error' => $th->getMessage()], 500);
         }
     }
 
+
     /**
-     * Remove the specified resource from storage.
+     * Eliminar tanque
      */
     public function destroy(Request $request, Almacen $almacen)
     {
